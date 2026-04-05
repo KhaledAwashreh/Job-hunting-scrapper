@@ -6,6 +6,7 @@
 
 const { Anthropic } = require('@anthropic-ai/sdk');
 const axios = require('axios');
+const { MODELS } = require('../config');
 const {
   getExtractionPrompt,
   getValidationPrompt,
@@ -66,7 +67,7 @@ async function extractWithClaude(htmlContent, companyContext) {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: MODELS.CLAUDE_MAIN,
       max_tokens: 4096,
       messages: [
         {
@@ -93,7 +94,7 @@ async function extractWithClaude(htmlContent, companyContext) {
  */
 async function extractWithOllama(htmlContent, companyContext) {
   const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-  const model = process.env.OLLAMA_MODEL || 'devstral';
+  const model = MODELS.OLLAMA_DEFAULT;
   const prompt = getExtractionPrompt(htmlContent, companyContext);
 
   try {
@@ -171,7 +172,7 @@ async function validateExtractionResults(jobs, claudeClient) {
     const validationPrompt = getValidationPrompt(jobs);
     
     const response = await claudeClient.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: MODELS.CLAUDE_MAIN,
       max_tokens: 1024,
       messages: [
         {
@@ -230,7 +231,7 @@ async function extractCompanyMetadata(htmlContent) {
     const prompt = getCompanyExtractionPrompt(htmlContent);
 
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: MODELS.CLAUDE_MAIN,
       max_tokens: 512,
       messages: [
         {

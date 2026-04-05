@@ -65,11 +65,24 @@ async function analyzePageForms(page, htmlContent) {
 
       return fields;
 
+      // Utility function to escape special CSS characters
+      function escapeSelector(str) {
+        return str.replace(/[!"#$%&'()*+,./:;?@\[\\\]^`{|}~]/g, '\\$&');
+      }
+
       // Utility functions for selector generation
       function getUniqueSelector(element) {
-        if (element.id) return `#${element.id}`;
-        if (element.name) return `[name="${element.name}"]`;
-        if (element.className) return `.${element.className.split(' ')[0]}`;
+        if (element.id) {
+          return `#${escapeSelector(element.id)}`;
+        }
+        if (element.name) {
+          const escaped = escapeSelector(element.name);
+          return `[name="${escaped}"]`;
+        }
+        if (element.className) {
+          const firstClass = element.className.split(' ')[0];
+          return `.${escapeSelector(firstClass)}`;
+        }
         
         // Fallback: nth-of-type
         let index = 0;
