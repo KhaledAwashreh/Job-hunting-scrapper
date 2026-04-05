@@ -21,7 +21,7 @@ const {
 
 let currentRunId = null;
 let isRunning = false;
-let timeWindow = getTimeWindowPreference(); // Load from DB, default: last 30 days
+let timeWindow = 30; // Default: last 30 days (will be loaded from DB in runScraper)
 let scrapeTimeoutHandle = null;
 const SCRAPER_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max
 
@@ -77,6 +77,9 @@ async function runScraper() {
   }, SCRAPER_TIMEOUT_MS);
 
   try {
+    // Load time window preference from database
+    timeWindow = getTimeWindowPreference() || 30;
+
     console.log(`[${new Date().toLocaleTimeString()}] Starting scraper run...`);
     console.log(`Time window: ${timeWindow} days`);
 
