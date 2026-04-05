@@ -14,17 +14,34 @@ const {
   updateScrapeRun,
   getAllProfiles,
   linkPositionToProfile,
-  updatePositionProfileScore
+  updatePositionProfileScore,
+  setTimeWindowPreference,
+  getTimeWindowPreference
 } = require('../db/queries');
 
 let currentRunId = null;
 let isRunning = false;
-let timeWindow = '30'; // Default: last 30 days
+let timeWindow = getTimeWindowPreference(); // Load from DB, default: last 30 days
 let scrapeTimeoutHandle = null;
 const SCRAPER_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max
 
+// Thread safety: simple mutex for state changes
+const stateMutex = { locked: false };
+
+async function acquireStateLock() {
+  while (stateMutex.locked) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  stateMutex.locked = true;
+}
+
+function releaseStateLock() {
+  stateMutex.locked = false;
+}
+
 function setTimeWindow(window) {
   timeWindow = window;
+  setTimeWindowPreference(window); // Persist to DB
 }
 
 function getTimeWindow() {
@@ -40,12 +57,18 @@ function stopScraperGracefully() {
 }
 
 async function runScraper() {
-  if (isRunning) {
-    console.log('Scraper already running');
-    return null;
+  // Acquire lock before checking/modifying state
+  await acquireStateLock();
+  try {
+    if (isRunning) {
+      console.log('Scraper already running');
+      return null;
+    }
+    isRunning = true;
+  } finally {
+    releaseStateLock();
   }
 
-  isRunning = true;
   const startedAt = new Date().toISOString();
 
   // Set timeout to prevent infinite hangs
@@ -183,7 +206,7 @@ async function runScraper() {
             }
 
             // Insert position with extracted fields
-            const positionId = addPosition(
+            const result = addPosition(
               hash,
               company.id,
               jobWithCompany.country,
@@ -200,7 +223,7 @@ async function runScraper() {
               scoreData.matched_resume
             );
 
-            if (positionId) {
+            if (result.id) {
               totalPositionsNew++;
               console.log(`  ✓ New: ${job.title} (Score: ${scoreData.score})`);
 
@@ -210,7 +233,7 @@ async function runScraper() {
                   for (const profile of profilesWithParsed) {
                     if (matchesProfile(extracted, profile.parsed_job_types)) {
                       try {
-                        linkPositionToProfile(positionId, profile.id, scoreData.score);
+                        linkPositionToProfile(result.id, profile.id, scoreData.score);
                         console.log(`    → Linked to profile: ${profile.name}`);
                       } catch (linkErr) {
                         // Already linked, skip
@@ -221,6 +244,11 @@ async function runScraper() {
                   console.error(`    Error linking profiles: ${profileLinkError.message}`);
                 }
               }
+            } else if (result.isDuplicate) {
+              console.log(`  ✓ Skipped duplicate: ${job.title}`);
+            } else {
+              console.error(`  ✗ Failed to insert: ${job.title}`);
+              errors.push(`Failed to insert job: ${job.title}`);
             }
           } catch (jobError) {
             errors.push(`Error processing job: ${jobError.message}`);
@@ -270,7 +298,13 @@ async function runScraper() {
     }
     throw error;
   } finally {
-    isRunning = false;
+    // Ensure state is safely released
+    await acquireStateLock();
+    try {
+      isRunning = false;
+    } finally {
+      releaseStateLock();
+    }
   }
 }
 
