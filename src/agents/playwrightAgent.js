@@ -11,6 +11,37 @@ const {
   INTERACTION_DELAYS,
 } = require('./form-navigator');
 
+const MEMORY_LIMITS = {
+  MAX_HEAP_MB: 512,
+  MAX_JOBS_IN_MEMORY: 500,
+};
+
+/**
+ * Monitor memory pressure during scraping
+ * Returns false if memory is critical
+ */
+function monitorMemoryPressure(allJobs) {
+  const heapUsage = process.memoryUsage().heapUsed / 1024 / 1024; // MB
+  const HEAP_LIMIT_MB = MEMORY_LIMITS.MAX_HEAP_MB;
+  const JOBS_LIMIT = MEMORY_LIMITS.MAX_JOBS_IN_MEMORY;
+
+  if (heapUsage > HEAP_LIMIT_MB) {
+    console.warn(`⚠ MEMORY WARNING: Heap usage ${heapUsage.toFixed(0)}MB exceeds ${HEAP_LIMIT_MB}MB limit`);
+    return false;
+  }
+
+  if (allJobs.length > JOBS_LIMIT) {
+    console.warn(`⚠ MEMORY WARNING: Jobs array (${allJobs.length}) exceeds ${JOBS_LIMIT} items limit`);
+    return false;
+  }
+
+  if (heapUsage > HEAP_LIMIT_MB * 0.8) {
+    console.warn(`⚠ MEMORY: Heap at ${heapUsage.toFixed(0)}MB (high pressure)`);
+  }
+
+  return true;
+}
+
 /**
  * PROGRAMMATIC ENTRY POINT - Called by orchestrator.js
  * Intelligently navigates career pages and extracts jobs
@@ -48,8 +79,8 @@ async function scrapeBrowser(careerUrl, company = null) {
  * Full pipeline: Load → Analyze Forms → Fill → Extract → Paginate
  */
 async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
-  let browser;
-  let context;
+  let browser = null;
+  let context = null;
   const allJobs = [];
   let pageCount = 0;
   const maxPages = 5; // Safety limit to prevent infinite loops
@@ -61,7 +92,13 @@ async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
 
     await page.setDefaultTimeout(15000);
     console.log('  → Loading page with Playwright...');
-    await page.goto(careerUrl, { waitUntil: 'networkidle' });
+    
+    try {
+      await page.goto(careerUrl, { waitUntil: 'networkidle' });
+    } catch (navErr) {
+      console.error(`Navigation failed: ${navErr.message}`);
+      throw new Error(`Failed to load ${careerUrl}: ${navErr.message}`);
+    }
 
     const initialHtml = await page.content();
     console.log(`  ✓ Page loaded (${initialHtml.length} bytes)`);
@@ -109,6 +146,12 @@ async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
         console.log(`  ℹ No jobs found on page ${pageCount}`);
       }
 
+      // Memory pressure check
+      if (!monitorMemoryPressure(allJobs)) {
+        console.log('  ✗ Memory pressure detected - stopping scraper');
+        break;
+      }
+
       // Phase 3: Check for pagination and navigate
       console.log('  Phase 3: Pagination Check');
       const pagination = await detectPaginationControl(page, pageHtml);
@@ -134,7 +177,7 @@ async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
     console.error(`  ✗ Scraping failed: ${error.message}`);
     return allJobs.length > 0 ? allJobs : [];
   } finally {
-    // Ensure proper resource cleanup
+    // Ensure proper resource cleanup regardless of success/failure
     if (context) {
       try {
         await context.close();
@@ -150,9 +193,9 @@ async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
       }
     }
   }
-
 }
 
 module.exports = {
   scrapeBrowser,
+  monitorMemoryPressure,
 };
