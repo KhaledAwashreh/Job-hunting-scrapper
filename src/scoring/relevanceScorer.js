@@ -1,4 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
+const { MODELS } = require('../config');
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -44,7 +45,7 @@ ${resumeTexts}`
 
   try {
     const message = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: MODELS.CLAUDE_MAIN,
       max_tokens: 200,
       messages: [
         {

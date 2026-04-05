@@ -4,6 +4,7 @@ const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 
 const resumesDir = path.join(__dirname, '../../data/resumes');
+const MAX_RESUME_LENGTH = 10000;
 
 async function parseResumes() {
   try {
@@ -37,11 +38,20 @@ async function parseResumes() {
         }
 
         if (text.trim()) {
+          const isTruncated = text.length > MAX_RESUME_LENGTH;
           resumes.push({
             index,
             filename,
-            text: text.substring(0, 10000)
+            text: text.substring(0, MAX_RESUME_LENGTH),
+            isTruncated,
+            originalLength: text.length
           });
+
+          if (isTruncated) {
+            console.warn(
+              `Resume truncated: ${filename} (${text.length} chars → ${MAX_RESUME_LENGTH} chars)`
+            );
+          }
           index++;
         }
       } catch (error) {
