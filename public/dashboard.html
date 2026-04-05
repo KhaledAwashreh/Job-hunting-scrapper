@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Hunter Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      background: #2c3e50;
+      color: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 4px;
+    }
+
+    header h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+
+    header p {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #ddd;
+    }
+
+    .tab-button {
+      padding: 12px 20px;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #666;
+      transition: all 0.3s;
+    }
+
+    .tab-button:hover {
+      color: #2c3e50;
+      background: #f9f9f9;
+    }
+
+    .tab-button.active {
+      color: #3498db;
+      border-bottom-color: #3498db;
+    }
+
+    .tab-content {
+      display: none;
+      background: white;
+      padding: 20px;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    button {
+      padding: 8px 16px;
+      background: #3498db;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #2980b9;
+    }
+
+    button:disabled {
+      background: #bdc3c7;
+      cursor: not-allowed;
+    }
+
+    button.danger {
+      background: #e74c3c;
+    }
+
+    button.danger:hover {
+      background: #c0392b;
+    }
+
+    .success {
+      background: #27ae60 !important;
+    }
+
+    .success:hover {
+      background: #229954 !important;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+
+    thead {
+      background: #f8f9fa;
+    }
+
+    th {
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 13px;
+      border-bottom: 2px solid #dee2e6;
+      color: #666;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #dee2e6;
+      font-size: 14px;
+    }
+
+    tr:hover {
+      background: #f8f9fa;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .badge-green {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .badge-amber {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .badge-red {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .badge-info {
+      background: #d1ecf1;
+      color: #0c5460;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .filters {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+    }
+
+    .filters select {
+      flex: 1;
+      min-width: 150px;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      border: 1px solid #f5c6cb;
+    }
+
+    .success-message {
+      background: #d4edda;
+      color: #155724;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      border: 1px solid #c3e6cb;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+    }
+
+    .run-detail {
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow: auto;
+    }
+
+    .link-cell {
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    a {
+      color: #3498db;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .spinner-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .accordion-item {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    .accordion-header {
+      padding: 12px;
+      background: #f8f9fa;
+      cursor: pointer;
+      font-weight: 500;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .accordion-header:hover {
+      background: #eee;
+    }
+
+    .accordion-content {
+      padding: 15px;
+      border-top: 1px solid #eee;
+      display: none;
+    }
+
+    .accordion-content.active {
+      display: block;
+    }
+
+    .accordion-arrow {
+      display: inline-block;
+      transition: transform 0.3s;
+    }
+
+    .accordion-arrow.open {
+      transform: rotate(180deg);
+    }
+
+    .profile-detail {
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+
+    .profile-detail-label {
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 3px;
+    }
+
+    .countries-grid {
+      margin-top: 10px;
+    }
+
+    .select-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .grouped-positions {
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🎯 Job Hunter Dashboard</h1>
+      <p>AI-powered job scraper with resume matching</p>
+    </header>
+
+    <div class="tabs">
+      <button class="tab-button" data-tab="positions">Positions</button>
+      <button class="tab-button" data-tab="companies">Companies</button>
+      <button class="tab-button" data-tab="profiles">Profiles</button>
+      <button class="tab-button" data-tab="runs">Run Log</button>
+    </div>
+
+    <!-- TAB 1: POSITIONS -->
+    <div id="positions" class="tab-content active">
+      <h2>Job Positions</h2>
+      <div class="filters">
+        <select id="countryFilter">
+          <option value="">All Countries</option>
+        </select>
+        <select id="statusFilter">
+          <option value="">All Statuses</option>
+          <option value="new">New</option>
+          <option value="applied">Applied</option>
+          <option value="rejected">Rejected</option>
+          <option value="accepted">Accepted</option>
+        </select>
+        <select id="jobTypeFilter">
+          <option value="">All Job Types</option>
+        </select>
+        <button id="refreshPositionsBtn">Refresh</button>
+      </div>
+      
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+        <h4>Group Results By:</h4>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+          <div>
+            <label>First Grouping</label>
+            <select id="groupBy1">
+              <option value="">—</option>
+              <option value="jobType">Job Type</option>
+              <option value="locationType">Location</option>
+              <option value="level">Level</option>
+            </select>
+          </div>
+          <div>
+            <label>Second Grouping</label>
+            <select id="groupBy2">
+              <option value="">—</option>
+              <option value="jobType">Job Type</option>
+              <option value="locationType">Location</option>
+              <option value="level">Level</option>
+            </select>
+          </div>
+          <div>
+            <label>Third Grouping</label>
+            <select id="groupBy3">
+              <option value="">—</option>
+              <option value="jobType">Job Type</option>
+              <option value="locationType">Location</option>
+              <option value="level">Level</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      <div id="positionsContainer">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
+
+    <!-- TAB 2: COMPANIES -->
+    <div id="companies" class="tab-content">
+      <h2>Company Index & Country Selection</h2>
+      
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+        <h3>Filter by Countries:</h3>
+        <div id="countriesContainer">
+          <div class="empty-state">Loading countries...</div>
+        </div>
+      </div>
+
+      <h3>Add New Company</h3>
+      <form id="addCompanyForm" onsubmit="addCompany(event)">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Company Name</label>
+            <input type="text" id="companyName" required>
+          </div>
+          <div class="form-group">
+            <label>Country</label>
+            <input type="text" id="companyCountry" placeholder="e.g., Netherlands" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Career Page URL</label>
+          <input type="url" id="careerUrl" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Platform</label>
+            <select id="platform">
+              <option value="unknown">Unknown</option>
+              <option value="custom">Custom</option>
+              <option value="greenhouse">Greenhouse</option>
+              <option value="lever">Lever</option>
+              <option value="workday">Workday</option>
+              <option value="linkedin">LinkedIn</option>
+              <option value="indeed">Indeed</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit">Add Company</button>
+        <div id="addCompanyMessage"></div>
+      </form>
+
+      <h3 style="margin-top: 30px;">Active Companies</h3>
+      <div id="companiesTableContainer">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
+
+    <!-- TAB 3: PROFILES -->
+    <div id="profiles" class="tab-content">
+      <h2>Job Profiles & Resume Matching</h2>
+      
+      <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <label style="font-weight: bold; margin-right: 10px;">Global Time Window:</label>
+          <select id="timeWindowSelect" style="padding: 8px 12px; border-radius: 4px;">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="180">Last 180 days</option>
+            <option value="all">All time</option>
+          </select>
+        </div>
+        <button id="addProfileBtn" style="padding: 8px 16px;">+ Add Profile</button>
+      </div>
+
+      <div id="profilesAccordion">
+        <div class="empty-state">Loading profiles...</div>
+      </div>
+    </div>
+
+    <!-- TAB 4: RUN LOG -->
+    <div id="runs" class="tab-content">
+      <h2>Scraper Runs</h2>
+      <button onclick="triggerScrape()" id="scrapeButton">Run Scraper Now</button>
+      <span id="scrapeStatus"></span>
+      <div id="runsContainer" style="margin-top: 20px;">
+        <div class="empty-state">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFILE MODAL -->
+  <div id="profileModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
+      <h3 id="profileFormTitle">Add Profile</h3>
+      <form id="profileForm" onsubmit="ProfilesTab.saveProfile(event)">
+        <div class="form-group">
+          <label>Profile Name</label>
+          <input type="text" id="profileName" required>
+        </div>
+
+        <div class="form-group">
+          <label>Resume File</label>
+          <input type="text" id="profileResume" placeholder="e.g., resume.pdf" required>
+        </div>
+
+        <div class="form-group">
+          <label>Job Types (Select multiple)</label>
+          <select id="profileJobTypes" multiple required style="min-height: 120px;">
+            <option value="Backend">Backend</option>
+            <option value="Frontend">Frontend</option>
+            <option value="FullStack">Full Stack</option>
+            <option value="DevOps">DevOps</option>
+            <option value="QA">QA</option>
+            <option value="AI">AI/ML</option>
+            <option value="Mobile">Mobile</option>
+            <option value="Data">Data</option>
+          </select>
+          <small style="display: block; margin-top: 5px; color: #999;">Hold Ctrl/Cmd to select multiple</small>
+        </div>
+
+        <div class="form-group">
+          <label>Secondary Category (Optional)</label>
+          <input type="text" id="profileSecondary" placeholder="e.g., Cloud Architecture">
+        </div>
+
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button type="button" onclick="ProfilesTab.closeModal()" style="background: #999;">Cancel</button>
+          <button type="submit">Save Profile</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <style>
+    #profileModal {
+      display: none !important;
+    }
+
+    #profileModal.open {
+      display: flex !important;
+    }
+  </style>
+
+  <script>
+    // Global state
+    const state = {
+      currentTab: 'positions',
+      positions: [],
+      companies: [],
+      runs: [],
+      scrapeRunning: false,
+    };
+
+    // Tab switching
+    document.querySelectorAll('.tab-button').forEach(button => {
+      button.addEventListener('click', (e) => {
+        document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        e.target.classList.add('active');
+        const tabName = e.target.getAttribute('data-tab');
+        document.getElementById(tabName).classList.add('active');
+        state.currentTab = tabName;
+
+        if (tabName === 'positions') PositionsTab.init();
+        else if (tabName === 'companies') CompaniesCountries.init();
+        else if (tabName === 'profiles') ProfilesTab.init();
+        else if (tabName === 'runs') loadRuns();
+      });
+    });
+
+    // Set first tab as active
+    document.querySelector('.tab-button').classList.add('active');
+
+    async function loadPositions() {
+      // Delegated to PositionsTab component
+      PositionsTab.loadPositions();
+    }
+
+    async function loadCompanies() {
+      // Delegated to CompaniesCountries component
+      CompaniesCountries.loadCompanies();
+    }
+
+    async function addCompany(event) {
+      event.preventDefault();
+      const name = document.getElementById('companyName').value;
+      const country = document.getElementById('companyCountry').value;
+      const career_url = document.getElementById('careerUrl').value;
+      const platform = document.getElementById('platform').value;
+
+      try {
+        const res = await fetch('/api/companies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, country, platform, career_url })
+        });
+
+        if (res.ok) {
+          showSuccess('Company added!');
+          document.getElementById('addCompanyForm').reset();
+          CompaniesCountries.loadCompanies();
+        } else {
+          showError('Failed to add company');
+        }
+      } catch (error) {
+        showError('Error: ' + error.message);
+      }
+    }
+
+    async function loadRuns() {
+      try {
+        const res = await fetch('/api/runs');
+        state.runs = await res.json();
+        renderRuns();
+        updateScrapeStatus();
+      } catch (error) {
+        showError('Failed to load runs: ' + error.message);
+      }
+    }
+
+    function renderRuns() {
+      const container = document.getElementById('runsContainer');
+      if (state.runs.length === 0) {
+        container.innerHTML = '<div class="empty-state">No scrape runs yet</div>';
+        return;
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>Started</th>
+              <th>Duration</th>
+              <th>Companies</th>
+              <th>Found</th>
+              <th>New</th>
+              <th>Errors</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      state.runs.forEach(run => {
+        const started = new Date(run.started_at).toLocaleString();
+        const duration = run.finished_at ? formatDuration(run.started_at, run.finished_at) : 'Running...';
+        const errors = run.errors_json ? JSON.parse(run.errors_json).length : 0;
+
+        html += `
+          <tr style="cursor: pointer;" onclick="toggleRunDetail(this)">
+            <td>${started}</td>
+            <td>${duration}</td>
+            <td>${run.companies_visited}</td>
+            <td>${run.positions_found}</td>
+            <td>${run.positions_new}</td>
+            <td>${errors > 0 ? `<span class="badge badge-red">${errors}</span>` : '0'}</td>
+          </tr>
+        `;
+
+        if (errors > 0 && run.errors_json) {
+          const errorList = JSON.parse(run.errors_json).join('\n');
+          html += `
+            <tr style="display: none;">
+              <td colspan="6">
+                <div class="run-detail">${errorList.replace(/\n/g, '<br>')}</div>
+              </td>
+            </tr>
+          `;
+        }
+      });
+
+      html += `
+          </tbody>
+        </table>
+      `;
+
+      container.innerHTML = html;
+    }
+
+    function toggleRunDetail(row) {
+      const next = row.nextElementSibling;
+      if (next && next.style.display === 'none') {
+        next.style.display = 'table-row';
+      } else if (next) {
+        next.style.display = 'none';
+      }
+    }
+
+    function formatDuration(start, end) {
+      const ms = new Date(end) - new Date(start);
+      const seconds = Math.floor(ms / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${minutes}m ${secs}s`;
+    }
+
+    async function triggerScrape() {
+      if (state.scrapeRunning) {
+        showError('Scraper already running');
+        return;
+      }
+
+      try {
+        document.getElementById('scrapeButton').disabled = true;
+        const res = await fetch('/api/scrape/run', { method: 'POST' });
+
+        if (res.status === 202) {
+          showSuccess('Scraper started!');
+          pollScrapeStatus();
+        } else {
+          showError('Failed to start scraper');
+          document.getElementById('scrapeButton').disabled = false;
+        }
+      } catch (error) {
+        showError('Error: ' + error.message);
+        document.getElementById('scrapeButton').disabled = false;
+      }
+    }
+
+    async function updateScrapeStatus() {
+      try {
+        const res = await fetch('/api/scrape/status');
+        const data = await res.json();
+        state.scrapeRunning = data.running;
+
+        const statusEl = document.getElementById('scrapeStatus');
+        if (data.running) {
+          statusEl.innerHTML = '<span class="spinner-container"><div class="loading"></div> Running...</span>';
+          document.getElementById('scrapeButton').disabled = true;
+        } else {
+          statusEl.innerHTML = '';
+          document.getElementById('scrapeButton').disabled = false;
+        }
+      } catch (error) {
+        console.error('Status check failed:', error);
+      }
+    }
+
+    function pollScrapeStatus() {
+      const checkStatus = async () => {
+        await updateScrapeStatus();
+        if (state.scrapeRunning) {
+          setTimeout(checkStatus, 3000);
+        } else {
+          loadRuns();
+          loadPositions();
+        }
+      };
+      checkStatus();
+    }
+
+    function showError(message) {
+      const id = 'msg-' + Date.now();
+      const msg = document.createElement('div');
+      msg.className = 'error';
+      msg.id = id;
+      msg.textContent = message;
+      document.body.insertBefore(msg, document.body.firstChild);
+      setTimeout(() => msg.remove(), 5000);
+    }
+
+    function showSuccess(message) {
+      const id = 'msg-' + Date.now();
+      const msg = document.createElement('div');
+      msg.className = 'success-message';
+      msg.id = id;
+      msg.textContent = message;
+      document.body.insertBefore(msg, document.body.firstChild);
+      setTimeout(() => msg.remove(), 3000);
+    }
+
+    // Initial load
+    loadPositions();
+  </script>
+
+  <!-- Component Scripts -->
+  <script src="./components/profiles-tab.js"></script>
+  <script src="./components/positions-tab.js"></script>
+  <script src="./components/companies-countries.js"></script>
+</body>
+</html>
