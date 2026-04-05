@@ -84,6 +84,13 @@ async function initializeDatabase() {
     );
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS app_preferences (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    );
+  `);
+
   database = db;
   saveDatabase();
 }

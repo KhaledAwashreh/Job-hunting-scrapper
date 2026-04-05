@@ -1,4 +1,5 @@
 const { getDatabase, saveDatabase } = require('./schema');
+const { ensureArray } = require('../utils/typeHelpers');
 
 function runQuery(query, params = []) {
   const db = getDatabase();
@@ -84,12 +85,19 @@ function getCompanyById(companyId) {
 }
 
 function getAllPositions() {
-  return runQuery(`
+  const raw = runQuery(`
     SELECT p.*, c.name as company_name
     FROM positions p
     LEFT JOIN companies c ON p.company_id = c.id
     ORDER BY p.match_score DESC
   `);
+  
+  return raw.map(p => ({
+    ...p,
+    location_type: ensureArray(p.location_type),
+    years_experience: ensureArray(p.years_experience),
+    seniority_level: ensureArray(p.seniority_level)
+  }));
 }
 
 function getPositionsByFilters(country, status) {
@@ -112,7 +120,14 @@ function getPositionsByFilters(country, status) {
   }
 
   query += ' ORDER BY p.match_score DESC';
-  return runQuery(query, params);
+  const raw = runQuery(query, params);
+  
+  return raw.map(p => ({
+    ...p,
+    location_type: ensureArray(p.location_type),
+    years_experience: ensureArray(p.years_experience),
+    seniority_level: ensureArray(p.seniority_level)
+  }));
 }
 
 function checkPositionExists(hash) {
@@ -128,10 +143,14 @@ function addPosition(hash, companyId, country, title, description, qualification
       [hash, companyId, country, title, description, qualifications, publishDate, link, jobType, JSON.stringify(locationTypes || []), JSON.stringify(yearsExp || []), JSON.stringify(seniorityLevels || []), matchScore, matchedResume]
     );
     const result = runQuery('SELECT last_insert_rowid() as id');
-    return result[0]?.id || null;
+    return { id: result[0]?.id || null, isDuplicate: false };
   } catch (e) {
-    // Duplicate hash - INSERT OR IGNORE behavior
-    return null;
+    // Duplicate hash - UNIQUE constraint violation
+    if (e.message && e.message.includes('UNIQUE')) {
+      return { id: null, isDuplicate: true };
+    }
+    // Unexpected error - re-throw
+    throw e;
   }
 }
 
@@ -140,13 +159,22 @@ function updatePositionStatus(positionId, status) {
 }
 
 function getPositionById(positionId) {
-  const result = runQuery(`
+  const raw = runQuery(`
     SELECT p.*, c.name as company_name
     FROM positions p
     LEFT JOIN companies c ON p.company_id = c.id
     WHERE p.id = ?
   `, [positionId]);
-  return result[0];
+  
+  if (raw.length === 0) return null;
+  
+  const p = raw[0];
+  return {
+    ...p,
+    location_type: ensureArray(p.location_type),
+    years_experience: ensureArray(p.years_experience),
+    seniority_level: ensureArray(p.seniority_level)
+  };
 }
 
 function createScrapeRun(startedAt) {
@@ -253,6 +281,19 @@ function unlinkPositionFromProfile(positionId, profileId) {
   );
 }
 
+// App Preferences functions
+function setTimeWindowPreference(preference) {
+  runWrite(
+    `INSERT OR REPLACE INTO app_preferences (key, value) VALUES (?, ?)`,
+    ['timeWindow', preference]
+  );
+}
+
+function getTimeWindowPreference() {
+  const result = runQuery(`SELECT value FROM app_preferences WHERE key = ?`, ['timeWindow']);
+  return result[0]?.value || '30';
+}
+
 module.exports = {
   getAllCompanies,
   getActiveCompanies,
@@ -280,5 +321,7 @@ module.exports = {
   getProfilesForPosition,
   getPositionsForProfile,
   updatePositionProfileScore,
-  unlinkPositionFromProfile
+  unlinkPositionFromProfile,
+  setTimeWindowPreference,
+  getTimeWindowPreference
 };
