@@ -1,0 +1,8 @@
+jobs.db
+node_modules/
+data/resumes/
+.env
+.DS_Store
+dist/
+build/
+*.log

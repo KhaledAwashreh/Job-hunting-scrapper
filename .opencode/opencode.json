@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "anthropic/claude-sonnet-4-20250514",
+  "default_agent": "builder",
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "npm *": "allow",
+      "npx *": "allow",
+      "node *": "allow",
+      "mkdir *": "allow",
+      "touch *": "allow",
+      "cp *": "allow",
+      "mv *": "allow",
+      "rm *": "ask",
+      "rm -rf *": "deny",
+      "*": "allow"
+    },
+    "webfetch": "allow"
+  },
+  "instructions": [
+    "AGENTS.md",
+    ".opencode/agents/RESUME_ARCHITECTURE.md",
+    ".opencode/agents/scraper.md",
+    ".opencode/skills/playwright-mcp.md"
+  ]
+}

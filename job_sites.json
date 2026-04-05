@@ -1,0 +1,512 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "description": "Repository of job/career sites by country",
+    "maintainer": "RefNet"
+  },
+  "global": {
+    "description": "Major job boards available in most countries",
+    "sites": [
+      {
+        "id": "linkedin",
+        "name": "LinkedIn Jobs",
+        "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+        "search_params": {
+          "keywords": "keywords",
+          "location": "location",
+          "start": "start"
+        },
+        "selectors": {
+          "job_card": ".job-search-card",
+          "title": ".job-search-card__title",
+          "company": ".job-search-card__subtitle",
+          "location": ".job-search-card__metadata",
+          "url": "data-job-url"
+        },
+        "requires_browser": true,
+        "rate_limit_ms": 1000
+      },
+      {
+        "id": "indeed",
+        "name": "Indeed",
+        "base_url": "https://www.indeed.com/jobs",
+        "search_params": {
+          "q": "keywords",
+          "l": "location",
+          "start": "start"
+        },
+        "selectors": {
+          "job_card": ".jobsearch-ResultsList > li > div",
+          "title": "h2.jobTitle > a, a.jobtitle",
+          "company": ".companyName",
+          "location": ".companyLocation",
+          "salary": ".salary-snippet, .estimated-salary"
+        },
+        "requires_browser": false,
+        "rate_limit_ms": 1000
+      },
+      {
+        "id": "glassdoor",
+        "name": "Glassdoor",
+        "base_url": "https://www.glassdoor.com/Job/jobs.htm",
+        "search_params": {
+          "sc.keyword": "keywords",
+          "locT": "C"
+        },
+        "selectors": {
+          "job_card": ".jobHeader",
+          "title": ".jobTitle",
+          "company": ".employerName"
+        },
+        "requires_browser": true,
+        "rate_limit_ms": 2000
+      }
+    ]
+  },
+  "countries": {
+    "ireland": {
+      "name": "Ireland",
+      "sites": [
+        {
+          "id": "irishjobs",
+          "name": "IrishJobs.ie",
+          "base_url": "https://www.irishjobs.ie/jobs",
+          "search_url": "https://www.irishjobs.ie/jobs/{keywords}?location={location}",
+          "selectors": {
+            "job_card": ".job-result",
+            "title": ".job-result__title",
+            "company": ".job-result__posted-by",
+            "location": ".job-result__location",
+            "url": "a.job-result__title-link",
+            "url_attr": "href"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        },
+        {
+          "id": "jobsie",
+          "name": "Jobs.ie",
+          "base_url": "https://www.jobs.ie",
+          "search_url": "https://www.jobs.ie/jobs?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".job-card",
+            "title": ".job-title",
+            "company": ".company-name",
+            "location": ".location"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "netherlands": {
+      "name": "Netherlands",
+      "sites": [
+        {
+          "id": "linkedindutch",
+          "name": "LinkedIn Netherlands",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "nl",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "indeeddutch",
+          "name": "Indeed Netherlands",
+          "base_url": "https://www.indeed.nl/jobs",
+          "search_params": {
+            "q": "keywords",
+            "l": "location"
+          },
+          "requires_browser": false,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "icterena",
+          "name": "ICTerena",
+          "base_url": "https://www.ictjob.nl",
+          "search_url": "https://www.ictjob.nl/nl/jobs?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".job-list-item",
+            "title": ".job-title",
+            "company": ".company-name",
+            "location": ".location"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "spain": {
+      "name": "Spain",
+      "sites": [
+        {
+          "id": "infojobs",
+          "name": "InfoJobs",
+          "base_url": "https://www.infojobs.net",
+          "search_url": "https://www.infojobs.net/trabajo-busqueda-{keywords}?provincia={location}",
+          "selectors": {
+            "job_card": ".job-list-item",
+            "title": ".job-title",
+            "company": ".company-name"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        },
+        {
+          "id": "linkedinspain",
+          "name": "LinkedIn Spain",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "es",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        }
+      ]
+    },
+    "germany": {
+      "name": "Germany",
+      "sites": [
+        {
+          "id": "linkedinde",
+          "name": "LinkedIn Germany",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "de",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "indeedde",
+          "name": "Indeed Germany",
+          "base_url": "https://de.indeed.com/jobs",
+          "search_params": {
+            "q": "keywords",
+            "l": "location"
+          },
+          "requires_browser": false,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "stepstone",
+          "name": "StepStone",
+          "base_url": "https://www.stepstone.de",
+          "search_url": "https://www.stepstone.de/jobs?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".job-element",
+            "title": ".job-title",
+            "company": ".company-name"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        },
+        {
+          "id": "xing",
+          "name": "XING Jobs",
+          "base_url": "https://www.xing.com/jobs",
+          "search_url": "https://www.xing.com/jobs/search?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".job-card",
+            "title": ".job-title",
+            "company": ".company"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "france": {
+      "name": "France",
+      "sites": [
+        {
+          "id": "linkedinfr",
+          "name": "LinkedIn France",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "fr",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "indeedfr",
+          "name": "Indeed France",
+          "base_url": "https://www.indeed.fr/jobs",
+          "search_params": {
+            "q": "keywords",
+            "l": "location"
+          },
+          "requires_browser": false,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "apec",
+          "name": "APEC (Cadres)",
+          "base_url": "https://www.apec.fr",
+          "search_url": "https://www.apec.fr/cadres/recherche-emploi.html?motsCles={keywords}&lieu={location}",
+          "selectors": {
+            "job_card": ".result-item",
+            "title": ".title",
+            "company": ".company"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "uk": {
+      "name": "United Kingdom",
+      "sites": [
+        {
+          "id": "linkedinuk",
+          "name": "LinkedIn UK",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "gb",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "indeeduk",
+          "name": "Indeed UK",
+          "base_url": "https://www.indeed.co.uk/jobs",
+          "search_params": {
+            "q": "keywords",
+            "l": "location"
+          },
+          "requires_browser": false,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "cwjobs",
+          "name": "CWJobs",
+          "base_url": "https://www.cwjobs.co.uk",
+          "search_url": "https://www.cwjobs.co.uk/jobs/{keywords}?location={location}",
+          "selectors": {
+            "job_card": ".job",
+            "title": ".job-title",
+            "company": ".company-name"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        },
+        {
+          "id": "reed",
+          "name": "Reed",
+          "base_url": "https://www.reed.co.uk",
+          "search_url": "https://www.reed.co.uk/jobs/{keywords}?location={location}",
+          "selectors": {
+            "job_card": ".job-card",
+            "title": ".job-title",
+            "company": ".company-name"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "netherlands": {
+      "name": "Netherlands",
+      "sites": [
+        {
+          "id": "linkedinnl",
+          "name": "LinkedIn Netherlands",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "nl",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "indeednl",
+          "name": "Indeed Netherlands",
+          "base_url": "https://www.indeed.nl/jobs",
+          "search_params": {
+            "q": "keywords",
+            "l": "location"
+          },
+          "requires_browser": false,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "ictjobnl",
+          "name": "ICTJob Netherlands",
+          "base_url": "https://www.ictjob.nl",
+          "search_url": "https://www.ictjob.nl/nl/jobs?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".job-list-item",
+            "title": ".job-title",
+            "company": ".company-name",
+            "location": ".location"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "austria": {
+      "name": "Austria",
+      "sites": [
+        {
+          "id": "linkedinat",
+          "name": "LinkedIn Austria",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "at",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "karriereat",
+          "name": "Karriere.at",
+          "base_url": "https://www.karriere.at",
+          "search_url": "https://www.karriere.at/jobs?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".job-offer",
+            "title": ".job-title",
+            "company": ".company"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "switzerland": {
+      "name": "Switzerland",
+      "sites": [
+        {
+          "id": "linkedinch",
+          "name": "LinkedIn Switzerland",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "ch",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "jobsch",
+          "name": "jobs.ch",
+          "base_url": "https://www.jobs.ch",
+          "search_url": "https://www.jobs.ch/en/jobs/?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".job-item",
+            "title": ".job-title",
+            "company": ".company"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "belgium": {
+      "name": "Belgium",
+      "sites": [
+        {
+          "id": "linkedinbe",
+          "name": "LinkedIn Belgium",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "be",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "vdab",
+          "name": "VDAB",
+          "base_url": "https://www.vdab.be",
+          "search_url": "https://www.vdab.be/vacatures?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".vacature",
+            "title": ".titel",
+            "company": ".bedrijf"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    },
+    "sweden": {
+      "name": "Sweden",
+      "sites": [
+        {
+          "id": "linkedinse",
+          "name": "LinkedIn Sweden",
+          "base_url": "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search",
+          "search_params": {
+            "keywords": "keywords",
+            "location": "location"
+          },
+          "country_filter": "se",
+          "requires_browser": true,
+          "rate_limit_ms": 1000
+        },
+        {
+          "id": "arbetsformedlingen",
+          "name": "Arbetsförmedlingen",
+          "base_url": "https://www.arbetsformedlingen.se",
+          "search_url": "https://www.arbetsformedlingen.se/platsbanken/?keywords={keywords}&location={location}",
+          "selectors": {
+            "job_card": ".job-result",
+            "title": ".job-title",
+            "company": ".company"
+          },
+          "requires_browser": true,
+          "rate_limit_ms": 1500
+        }
+      ]
+    }
+  },
+  "_add_new_country": {
+    "instructions": "Add country under 'countries' with ISO code as key",
+    "example": {
+      "countrycode": {
+        "name": "Country Name",
+        "sites": [
+          {
+            "id": "uniquesiteid",
+            "name": "Display Name",
+            "base_url": "https://example.com",
+            "search_url": "https://example.com/jobs?keywords={keywords}&location={location}",
+            "selectors": {
+              "job_card": ".job-class",
+              "title": ".title-class",
+              "company": ".company-class",
+              "location": ".location-class",
+              "url": "a.link",
+              "url_attr": "href"
+            },
+            "requires_browser": true,
+            "rate_limit_ms": 1500
+          }
+        ]
+      }
+    }
+  }
+}
