@@ -29,14 +29,78 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
+// CORS middleware
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// Database initialization guard
+let dbInitialized = false;
+app.use((req, res, next) => {
+  if (!dbInitialized && !req.path.startsWith('/health')) {
+    return res.status(503).json({ error: 'Database not initialized' });
+  }
+  next();
+});
+
 // Track resumes for API access
 let loadedResumes = [];
+
+// Input validation middleware
+const validateCompanyInput = (req, res, next) => {
+  const { name, country, career_url, platform } = req.body;
+  
+  if (!name || typeof name !== 'string' || name.length === 0 || name.length > 255) {
+    return res.status(400).json({ error: 'Invalid name (1-255 characters required)' });
+  }
+  if (!country || typeof country !== 'string' || country.length === 0 || country.length > 100) {
+    return res.status(400).json({ error: 'Invalid country (1-100 characters required)' });
+  }
+  if (!career_url || typeof career_url !== 'string') {
+    return res.status(400).json({ error: 'Invalid or missing career_url' });
+  }
+  try {
+    new URL(career_url);
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL format' });
+  }
+  if (platform && !['greenhouse', 'lever', 'workday', 'custom'].includes(platform)) {
+    return res.status(400).json({ error: 'Invalid platform' });
+  }
+  next();
+};
+
+const validateProfileInput = (req, res, next) => {
+  const { name, resume_file, job_types, secondary_category } = req.body;
+  
+  if (!name || typeof name !== 'string' || name.length === 0 || name.length > 255) {
+    return res.status(400).json({ error: 'Invalid name' });
+  }
+  if (!resume_file || typeof resume_file !== 'string' || resume_file.length === 0) {
+    return res.status(400).json({ error: 'Invalid resume_file' });
+  }
+  if (!job_types || !Array.isArray(job_types) || job_types.length === 0) {
+    return res.status(400).json({ error: 'job_types must be a non-empty array' });
+  }
+  if (!job_types.every(t => typeof t === 'string' && t.length > 0)) {
+    return res.status(400).json({ error: 'All job_types must be non-empty strings' });
+  }
+  if (secondary_category && typeof secondary_category !== 'string') {
+    return res.status(400).json({ error: 'Invalid secondary_category' });
+  }
+  next();
+};
 
 // Initialize database and resumes on startup
 async function startup() {
   try {
     console.log('Initializing database...');
     await initializeDatabase();
+    dbInitialized = true;
     console.log('Database initialized');
 
     console.log('Loading resumes...');
@@ -44,6 +108,7 @@ async function startup() {
     console.log(`Loaded ${loadedResumes.length} resume(s)`);
   } catch (error) {
     console.error('Startup error:', error);
+    dbInitialized = false;
   }
 }
 
@@ -92,13 +157,9 @@ app.get('/api/companies', (req, res) => {
   }
 });
 
-app.post('/api/companies', (req, res) => {
+app.post('/api/companies', validateCompanyInput, (req, res) => {
   try {
     const { name, country, career_url, platform } = req.body;
-
-    if (!name || !country || !career_url) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
 
     const id = addCompany(name, country, career_url, platform || 'custom');
     const company = getCompanyById(id);
@@ -199,13 +260,9 @@ app.get('/api/profiles', (req, res) => {
   }
 });
 
-app.post('/api/profiles', (req, res) => {
+app.post('/api/profiles', validateProfileInput, (req, res) => {
   try {
     const { name, resume_file, job_types, secondary_category } = req.body;
-
-    if (!name || !resume_file || !job_types || job_types.length === 0) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
 
     const id = addProfile(name, resume_file, job_types, secondary_category || null);
     const profile = getProfileById(id);
@@ -222,24 +279,30 @@ app.get('/api/profiles/:id', (req, res) => {
     if (!profile) {
       return res.status(404).json({ error: 'Profile not found' });
     }
-    res.json({ ...profile, job_types: JSON.parse(profile.job_types) });
+    try {
+      return res.json({ ...profile, job_types: JSON.parse(profile.job_types) });
+    } catch (parseErr) {
+      console.error('JSON parse error for profile job_types:', parseErr);
+      return res.json({ ...profile, job_types: [] });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.patch('/api/profiles/:id', (req, res) => {
+app.patch('/api/profiles/:id', validateProfileInput, (req, res) => {
   try {
     const { id } = req.params;
     const { name, resume_file, job_types, secondary_category } = req.body;
 
-    if (!name || !resume_file || !job_types) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
     updateProfile(id, name, resume_file, job_types, secondary_category || null);
     const updated = getProfileById(id);
-    res.json({ ...updated, job_types: JSON.parse(updated.job_types) });
+    try {
+      res.json({ ...updated, job_types: JSON.parse(updated.job_types) });
+    } catch (parseErr) {
+      console.error('JSON parse error for updated profile:', parseErr);
+      res.json({ ...updated, job_types: [] });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -279,11 +342,23 @@ app.post('/api/scrape/time-window', (req, res) => {
 
 // ===== Health check =====
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    resumes_loaded: loadedResumes.length,
-    timestamp: new Date().toISOString()
-  });
+  try {
+    // Test database connection
+    getAllPositions();
+    res.json({
+      status: 'ok',
+      db_initialized: dbInitialized,
+      resumes_loaded: loadedResumes.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      db_initialized: dbInitialized,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // ===== Error handling =====

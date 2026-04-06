@@ -6,7 +6,7 @@
  * Called by playwrightAgent.js to traverse career pages
  */
 
-const { Anthropic } = require('@anthropic-ai/sdk');
+const Anthropic = require('@anthropic-ai/sdk');
 
 // Real-world interaction delays (milliseconds)
 const INTERACTION_DELAYS = {

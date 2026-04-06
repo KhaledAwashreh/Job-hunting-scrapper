@@ -49,13 +49,14 @@ async function scrapeBrowser(careerUrl, company = null) {
  */
 async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
   let browser;
+  let context;
   const allJobs = [];
   let pageCount = 0;
   const maxPages = 5; // Safety limit to prevent infinite loops
 
   try {
     browser = await chromium.launch({ headless: true });
-    const context = await browser.createBrowserContext();
+    context = await browser.createBrowserContext();
     const page = await context.newPage();
 
     await page.setDefaultTimeout(15000);
@@ -127,15 +128,26 @@ async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
       }
     }
 
-    await context.close();
     console.log(`\n  ✓ Scraping complete: ${allJobs.length} total jobs from ${pageCount} page(s)`);
     return allJobs;
   } catch (error) {
     console.error(`  ✗ Scraping failed: ${error.message}`);
     return allJobs.length > 0 ? allJobs : [];
   } finally {
+    // Ensure proper resource cleanup
+    if (context) {
+      try {
+        await context.close();
+      } catch (ctxErr) {
+        console.warn(`Warning closing browser context: ${ctxErr.message}`);
+      }
+    }
     if (browser) {
-      await browser.close();
+      try {
+        await browser.close();
+      } catch (brErr) {
+        console.warn(`Warning closing browser: ${brErr.message}`);
+      }
     }
   }
 

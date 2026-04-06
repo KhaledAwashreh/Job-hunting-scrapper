@@ -43,7 +43,7 @@ async function initializeDatabase() {
       location_type   TEXT DEFAULT '[]',
       years_experience TEXT DEFAULT '[]',
       seniority_level TEXT DEFAULT '[]',
-      match_score     INTEGER DEFAULT 0,
+      match_score     REAL DEFAULT 0,
       matched_resume  INTEGER,
       status          TEXT DEFAULT 'new',
       created_at      TEXT DEFAULT (datetime('now'))

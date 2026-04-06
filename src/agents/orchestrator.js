@@ -20,6 +20,8 @@ const {
 let currentRunId = null;
 let isRunning = false;
 let timeWindow = '30'; // Default: last 30 days
+let scrapeTimeoutHandle = null;
+const SCRAPER_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes max
 
 function setTimeWindow(window) {
   timeWindow = window;
@@ -27,6 +29,14 @@ function setTimeWindow(window) {
 
 function getTimeWindow() {
   return timeWindow;
+}
+
+function stopScraperGracefully() {
+  console.log('[TIMEOUT] Scraper timeout reached - force stopping');
+  isRunning = false;
+  if (scrapeTimeoutHandle) {
+    clearTimeout(scrapeTimeoutHandle);
+  }
 }
 
 async function runScraper() {
@@ -37,6 +47,11 @@ async function runScraper() {
 
   isRunning = true;
   const startedAt = new Date().toISOString();
+
+  // Set timeout to prevent infinite hangs
+  scrapeTimeoutHandle = setTimeout(() => {
+    stopScraperGracefully();
+  }, SCRAPER_TIMEOUT_MS);
 
   try {
     console.log(`[${new Date().toLocaleTimeString()}] Starting scraper run...`);
@@ -168,7 +183,7 @@ async function runScraper() {
             }
 
             // Insert position with extracted fields
-            const inserted = addPosition(
+            const positionId = addPosition(
               hash,
               company.id,
               jobWithCompany.country,
@@ -185,27 +200,20 @@ async function runScraper() {
               scoreData.matched_resume
             );
 
-            if (inserted) {
+            if (positionId) {
               totalPositionsNew++;
               console.log(`  ✓ New: ${job.title} (Score: ${scoreData.score})`);
 
               // Link to matching profiles
               if (profilesWithParsed.length > 0) {
                 try {
-                  const posResult = checkPositionExists(hash); // Need to get the position ID
-                  // This is a workaround - in production, addPosition should return the ID
-                  const jobs_check = require('../db/queries').getPositionsByFilters(null, null);
-                  const position = jobs_check.find(p => p.hash === hash);
-                  
-                  if (position) {
-                    for (const profile of profilesWithParsed) {
-                      if (matchesProfile(extracted, profile.parsed_job_types)) {
-                        try {
-                          linkPositionToProfile(position.id, profile.id, scoreData.score);
-                          console.log(`    → Linked to profile: ${profile.name}`);
-                        } catch (linkErr) {
-                          // Already linked, skip
-                        }
+                  for (const profile of profilesWithParsed) {
+                    if (matchesProfile(extracted, profile.parsed_job_types)) {
+                      try {
+                        linkPositionToProfile(positionId, profile.id, scoreData.score);
+                        console.log(`    → Linked to profile: ${profile.name}`);
+                      } catch (linkErr) {
+                        // Already linked, skip
                       }
                     }
                   }

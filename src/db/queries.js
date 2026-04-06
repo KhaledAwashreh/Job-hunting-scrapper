@@ -127,10 +127,11 @@ function addPosition(hash, companyId, country, title, description, qualification
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [hash, companyId, country, title, description, qualifications, publishDate, link, jobType, JSON.stringify(locationTypes || []), JSON.stringify(yearsExp || []), JSON.stringify(seniorityLevels || []), matchScore, matchedResume]
     );
-    return true;
+    const result = runQuery('SELECT last_insert_rowid() as id');
+    return result[0]?.id || null;
   } catch (e) {
     // Duplicate hash - INSERT OR IGNORE behavior
-    return false;
+    return null;
   }
 }
 

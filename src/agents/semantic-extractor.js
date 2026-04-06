@@ -146,8 +146,8 @@ function parseExtractionResponse(content) {
     return parsed
       .filter(job => job.job_title && job.job_description)
       .map(job => ({
-        job_title: String(job.job_title).trim(),
-        job_description: String(job.job_description).trim(),
+        title: String(job.job_title).trim(),
+        description: String(job.job_description).trim(),
         location: job.location ? String(job.location).trim() : null,
         job_type: job.job_type ? String(job.job_type).trim() : null,
         years_required: job.years_required ? String(job.years_required).trim() : null,
