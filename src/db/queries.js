@@ -200,11 +200,11 @@ function getScrapeRunById(runId) {
 }
 
 // Profile functions
-function addProfile(name, resumeFile, jobTypes, secondaryCategory) {
+function addProfile(name, resumeFile, jobTypes, secondaryCategory, seniorityLevel, yearsOfExperience = [], workLocationPreference = []) {
   runWrite(
-    `INSERT INTO profiles (name, resume_file, job_types, secondary_category)
-     VALUES (?, ?, ?, ?)`,
-    [name, resumeFile, JSON.stringify(jobTypes), secondaryCategory]
+    `INSERT INTO profiles (name, resume_file, job_types, secondary_category, seniority_level, years_of_experience, work_location_preference)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [name, resumeFile, JSON.stringify(jobTypes), secondaryCategory, seniorityLevel || null, JSON.stringify(yearsOfExperience), JSON.stringify(workLocationPreference)]
   );
   const result = runQuery('SELECT last_insert_rowid() as id');
   return result[0]?.id || 1;
@@ -219,10 +219,10 @@ function getProfileById(profileId) {
   return result[0];
 }
 
-function updateProfile(profileId, name, resumeFile, jobTypes, secondaryCategory) {
+function updateProfile(profileId, name, resumeFile, jobTypes, secondaryCategory, seniorityLevel, yearsOfExperience = [], workLocationPreference = []) {
   runWrite(
-    `UPDATE profiles SET name = ?, resume_file = ?, job_types = ?, secondary_category = ? WHERE id = ?`,
-    [name, resumeFile, JSON.stringify(jobTypes), secondaryCategory, profileId]
+    `UPDATE profiles SET name = ?, resume_file = ?, job_types = ?, secondary_category = ?, seniority_level = ?, years_of_experience = ?, work_location_preference = ? WHERE id = ?`,
+    [name, resumeFile, JSON.stringify(jobTypes), secondaryCategory, seniorityLevel || null, JSON.stringify(yearsOfExperience), JSON.stringify(workLocationPreference), profileId]
   );
 }
 
