@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const { initializeDatabase } = require('./db/schema');
@@ -95,13 +96,16 @@ const validateCompanyInput = (req, res, next) => {
 };
 
 const validateProfileInput = (req, res, next) => {
-  const { name, resume_file, job_types, secondary_category } = req.body;
+  const { name, resume_file, job_types, secondary_category, seniority_level } = req.body;
   
   if (!name || typeof name !== 'string' || name.length === 0 || name.length > 255) {
     return res.status(400).json({ error: 'Invalid name' });
   }
   if (!resume_file || typeof resume_file !== 'string' || resume_file.length === 0) {
     return res.status(400).json({ error: 'Invalid resume_file' });
+  }
+  if (seniority_level && typeof seniority_level !== 'string') {
+    return res.status(400).json({ error: 'seniority_level must be a string' });
   }
   if (!job_types || !Array.isArray(job_types) || job_types.length === 0) {
     return res.status(400).json({ error: 'job_types must be a non-empty array' });
@@ -287,10 +291,12 @@ app.get('/api/scrape/status', (req, res) => {
 app.get('/api/profiles', (req, res) => {
   try {
     const profiles = getAllProfiles();
-    // Parse job_types JSON for each profile
+    // Parse JSON fields for each profile
     const parsed = profiles.map(p => ({
       ...p,
-      job_types: JSON.parse(p.job_types || '[]')
+      job_types: JSON.parse(p.job_types || '[]'),
+      years_of_experience: JSON.parse(p.years_of_experience || '[]'),
+      work_location_preference: JSON.parse(p.work_location_preference || '[]')
     }));
     res.json(parsed);
   } catch (error) {
@@ -300,11 +306,16 @@ app.get('/api/profiles', (req, res) => {
 
 app.post('/api/profiles', validateProfileInput, (req, res) => {
   try {
-    const { name, resume_file, job_types, secondary_category } = req.body;
+    const { name, resume_file, job_types, secondary_category, seniority_level, years_of_experience = [], work_location_preference = [] } = req.body;
 
-    const id = addProfile(name, resume_file, job_types, secondary_category || null);
+    const id = addProfile(name, resume_file, job_types, secondary_category || null, seniority_level || null, years_of_experience, work_location_preference);
     const profile = getProfileById(id);
-    res.status(201).json({ ...profile, job_types: JSON.parse(profile.job_types) });
+    res.status(201).json({ 
+      ...profile, 
+      job_types: JSON.parse(profile.job_types),
+      years_of_experience: JSON.parse(profile.years_of_experience || '[]'),
+      work_location_preference: JSON.parse(profile.work_location_preference || '[]')
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -318,10 +329,15 @@ app.get('/api/profiles/:id', (req, res) => {
       return res.status(404).json({ error: 'Profile not found' });
     }
     try {
-      return res.json({ ...profile, job_types: JSON.parse(profile.job_types) });
+      return res.json({ 
+        ...profile, 
+        job_types: JSON.parse(profile.job_types || '[]'),
+        years_of_experience: JSON.parse(profile.years_of_experience || '[]'),
+        work_location_preference: JSON.parse(profile.work_location_preference || '[]')
+      });
     } catch (parseErr) {
-      console.error('JSON parse error for profile job_types:', parseErr);
-      return res.json({ ...profile, job_types: [] });
+      console.error('JSON parse error for profile:', parseErr);
+      return res.json({ ...profile, job_types: [], years_of_experience: [], work_location_preference: [] });
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -331,15 +347,20 @@ app.get('/api/profiles/:id', (req, res) => {
 app.patch('/api/profiles/:id', validateProfileInput, (req, res) => {
   try {
     const { id } = req.params;
-    const { name, resume_file, job_types, secondary_category } = req.body;
+    const { name, resume_file, job_types, secondary_category, seniority_level, years_of_experience = [], work_location_preference = [] } = req.body;
 
-    updateProfile(id, name, resume_file, job_types, secondary_category || null);
+    updateProfile(id, name, resume_file, job_types, secondary_category || null, seniority_level || null, years_of_experience, work_location_preference);
     const updated = getProfileById(id);
     try {
-      res.json({ ...updated, job_types: JSON.parse(updated.job_types) });
+      res.json({ 
+        ...updated, 
+        job_types: JSON.parse(updated.job_types || '[]'),
+        years_of_experience: JSON.parse(updated.years_of_experience || '[]'),
+        work_location_preference: JSON.parse(updated.work_location_preference || '[]')
+      });
     } catch (parseErr) {
       console.error('JSON parse error for updated profile:', parseErr);
-      res.json({ ...updated, job_types: [] });
+      res.json({ ...updated, job_types: [], years_of_experience: [], work_location_preference: [] });
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
