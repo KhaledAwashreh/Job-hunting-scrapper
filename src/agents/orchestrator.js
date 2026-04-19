@@ -1,5 +1,10 @@
+require('dotenv').config();
+
 const { parseSearchParams } = require('../utils/csvParser');
 const { parseResumes } = require('../utils/resumeParser');
+
+
+
 const { scrapeByPlatform } = require('./apiAgent');
 const { scrapeBrowser } = require('./playwrightAgent');
 const { scorePosition } = require('../scoring/relevanceScorer');
