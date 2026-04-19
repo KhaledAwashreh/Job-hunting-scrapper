@@ -11,6 +11,7 @@
     "@anthropic-ai/sdk": "^0.20.0",
     "axios": "^1.14.0",
     "csv-parse": "^5.5.0",
+    "dotenv": "^17.4.1",
     "express": "^4.18.0",
     "mammoth": "^1.6.0",
     "pdf-parse": "^1.1.1",
