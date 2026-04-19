@@ -56,10 +56,26 @@ async function initializeDatabase() {
       name            TEXT NOT NULL,
       resume_file     TEXT NOT NULL,
       job_types       TEXT NOT NULL,
+      seniority_level TEXT,
       secondary_category TEXT,
+      years_of_experience TEXT DEFAULT '[]',
+      work_location_preference TEXT DEFAULT '[]',
       created_at      TEXT DEFAULT (datetime('now'))
     );
   `);
+
+    // Add seniority_level column to existing profiles table (for databases created before this column existed)
+    try {
+      db.run(`ALTER TABLE profiles ADD COLUMN seniority_level TEXT`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    // Add years_of_experience column if missing
+    try {
+      db.run(`ALTER TABLE profiles ADD COLUMN years_of_experience TEXT DEFAULT '[]'`);
+    } catch (e) {
+      // Column may already exist, ignore
+    }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS position_profiles (
