@@ -87,7 +87,7 @@ async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
 
   try {
     browser = await chromium.launch({ headless: true });
-    context = await browser.createBrowserContext();
+    context = await browser.newContext();
     const page = await context.newPage();
 
     await page.setDefaultTimeout(15000);
