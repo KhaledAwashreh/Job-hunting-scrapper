@@ -1,0 +1,22 @@
+{
+  "name": "job-hunter-scraper",
+  "version": "1.0.0",
+  "description": "A Node.js job hunting scraper application.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.0",
+    "better-sqlite3": "^9.4.3",
+    "csv-parse": "^5.5.5",
+    "express": "^4.19.2",
+    "mammoth": "^1.6.2",
+    "pdf-parse": "^1.1.1",
+    "playwright": "^1.42.1"
+  }
+}
