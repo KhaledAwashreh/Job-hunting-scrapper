@@ -5,16 +5,9 @@
 
 const PositionsTab = {
   positions: [],
-  groupBy1: null,
-  groupBy2: null,
-  groupBy3: null,
-
-  groupOptions: [
-    { value: '', label: '—' },
-    { value: 'jobType', label: 'Job Type' },
-    { value: 'locationType', label: 'Location' },
-    { value: 'level', label: 'Level' }
-  ],
+  filterJobType: null,
+  filterLocation: null,
+  filterLevel: null,
 
   async init() {
     this.setupEventListeners();
@@ -22,22 +15,22 @@ const PositionsTab = {
   },
 
   setupEventListeners() {
-    document.getElementById('countryFilter').addEventListener('change', () => this.loadPositions());
-    document.getElementById('statusFilter').addEventListener('change', () => this.loadPositions());
-    document.getElementById('jobTypeFilter').addEventListener('change', () => this.loadPositions());
-    document.getElementById('groupBy1').addEventListener('change', (e) => {
-      this.groupBy1 = e.target.value;
+    document.getElementById('countryFilter')?.addEventListener('change', () => this.loadPositions());
+    document.getElementById('statusFilter')?.addEventListener('change', () => this.loadPositions());
+    document.getElementById('jobTypeFilter')?.addEventListener('change', () => this.loadPositions());
+    document.getElementById('filterJobType')?.addEventListener('change', (e) => {
+      this.filterJobType = e.target.value || null;
       this.renderPositions();
     });
-    document.getElementById('groupBy2').addEventListener('change', (e) => {
-      this.groupBy2 = e.target.value;
+    document.getElementById('filterLocation')?.addEventListener('change', (e) => {
+      this.filterLocation = e.target.value || null;
       this.renderPositions();
     });
-    document.getElementById('groupBy3').addEventListener('change', (e) => {
-      this.groupBy3 = e.target.value;
+    document.getElementById('filterLevel')?.addEventListener('change', (e) => {
+      this.filterLevel = e.target.value || null;
       this.renderPositions();
     });
-    document.getElementById('refreshPositionsBtn').addEventListener('click', () => this.loadPositions());
+    document.getElementById('refreshPositionsBtn')?.addEventListener('click', () => this.loadPositions());
   },
 
   async loadPositions() {
@@ -52,6 +45,7 @@ const PositionsTab = {
       this.positions = await res.json();
       this.renderPositions();
       this.updateCountryFilter();
+      this.updateJobTypeFilter();
     } catch (error) {
       showError('Failed to load positions: ' + error.message);
     }
@@ -60,20 +54,30 @@ const PositionsTab = {
   renderPositions() {
     const container = document.getElementById('positionsContainer');
     
-    if (this.positions.length === 0) {
-      container.innerHTML = '<div class="empty-state">No positions found</div>';
+    // Apply filters
+    let filtered = this.positions.filter(pos => {
+      if (this.filterJobType && pos.job_type !== this.filterJobType) return false;
+      if (this.filterLocation) {
+        const locs = this.parseArray(pos.location_type);
+        if (!locs.includes(this.filterLocation)) return false;
+      }
+      if (this.filterLevel) {
+        const levels = this.parseArray(pos.seniority_level);
+        if (!levels.includes(this.filterLevel)) return false;
+      }
+      return true;
+    });
+    
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="empty-state">No positions found with selected filters</div>';
       return;
     }
 
-    // Apply grouping
-    if (this.groupBy1 || this.groupBy2 || this.groupBy3) {
-      this.renderGrouped();
-    } else {
-      this.renderFlat();
-    }
+    this.renderFlat(filtered);
+    this.updateFilterDropdowns();
   },
 
-  renderFlat() {
+  renderFlat(positions) {
     const container = document.getElementById('positionsContainer');
     let html = `
       <table>
@@ -86,7 +90,6 @@ const PositionsTab = {
             <th>Job Type</th>
             <th>Location</th>
             <th>Level</th>
-            <th>Profiles</th>
             <th>Link</th>
             <th>Status</th>
           </tr>
@@ -94,12 +97,12 @@ const PositionsTab = {
         <tbody>
     `;
 
-    this.positions.forEach(pos => {
+    positions.forEach(pos => {
       const scoreClass = pos.match_score >= 70 ? 'badge-green' : pos.match_score >= 40 ? 'badge-amber' : 'badge-red';
       const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
       
       const locationTypes = this.parseArray(pos.location_type);
-      const jobTypes = this.parseArray(pos.years_experience);
+      const levels = this.parseArray(pos.seniority_level);
 
       html += `
         <tr>
@@ -109,8 +112,7 @@ const PositionsTab = {
           <td>${pos.title}</td>
           <td>${pos.job_type || '—'}</td>
           <td>${locationTypes.join(', ') || '—'}</td>
-          <td>${pos.seniority_level || '—'}</td>
-          <td><button class="profile-btn" onclick="alert('Profile matching - coming soon')">Show</button></td>
+          <td>${levels.join(', ') || '—'}</td>
           <td class="link-cell"><a href="${pos.link}" target="_blank">View</a></td>
           <td>
             <span class="badge ${statusBadgeClass}">${pos.status}</span>
@@ -137,30 +139,51 @@ const PositionsTab = {
     let html = '<div class="grouped-positions">';
     
     const renderGroup = (data, level = 1) => {
-      if (data.positions) {
-        // Leaf node - show positions table
+      if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0].title) {
+        // Leaf node - show positions in a simple list
+        data.forEach(pos => {
+          const scoreClass = pos.match_score >= 70 ? 'badge-green' : pos.match_score >= 40 ? 'badge-amber' : 'badge-red';
+          const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
+          
+          html += `
+            <div style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
+              <div style="display: flex; gap: 10px; align-items: center; font-size: 14px; flex-wrap: wrap;">
+                <span class="badge ${scoreClass}">${pos.match_score}</span>
+                <strong>${pos.title}</strong>
+                <span style="color: #999;">${pos.company_name}</span>
+                <span style="font-size: 12px; color: #666;">${pos.country}</span>
+                <a href="${pos.link}" target="_blank" style="font-size: 12px;">View</a>
+                <span class="badge ${statusBadgeClass}" style="margin-left: auto;">${pos.status}</span>
+              </div>
+            </div>
+          `;
+        });
+      } else if (data && typeof data === 'object' && data.positions && Array.isArray(data.positions)) {
+        // Mixed node with positions array
         data.positions.forEach(pos => {
           const scoreClass = pos.match_score >= 70 ? 'badge-green' : pos.match_score >= 40 ? 'badge-amber' : 'badge-red';
           const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
           
           html += `
-            <div style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd;">
-              <div style="display: flex; gap: 10px; align-items: center; font-size: 14px;">
+            <div style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
+              <div style="display: flex; gap: 10px; align-items: center; font-size: 14px; flex-wrap: wrap;">
                 <span class="badge ${scoreClass}">${pos.match_score}</span>
                 <strong>${pos.title}</strong>
                 <span style="color: #999;">${pos.company_name}</span>
+                <span style="font-size: 12px; color: #666;">${pos.country}</span>
                 <a href="${pos.link}" target="_blank" style="font-size: 12px;">View</a>
-                <span class="badge ${statusBadgeClass}">${pos.status}</span>
+                <span class="badge ${statusBadgeClass}" style="margin-left: auto;">${pos.status}</span>
               </div>
             </div>
           `;
         });
-      } else {
+      } else if (typeof data === 'object') {
         // Group node - show category and recurse
         const keys = Object.keys(data);
         keys.forEach(key => {
-          html += `<div style="margin-left: ${level * 20}px; padding: 12px; background: #f8f9fa; margin-top: 10px; font-weight: bold; border-radius: 4px;">
-            ${key} (${this.countPositions(data[key])})
+          const count = this.countPositionsInGroup(data[key]);
+          html += `<div style="margin-left: ${level * 20}px; padding: 12px 8px; background: #f8f9fa; margin-top: 10px; margin-bottom: 5px; font-weight: 600; border-radius: 4px; color: #2c3e50;">
+            ${key} <span style="font-size: 12px; color: #999;">(${count} ${count === 1 ? 'job' : 'jobs'})</span>
           </div>`;
           renderGroup(data[key], level + 1);
         });
@@ -172,25 +195,36 @@ const PositionsTab = {
     container.innerHTML = html;
   },
 
+  countPositionsInGroup(group) {
+    if (Array.isArray(group)) return group.length;
+    if (group && group.positions && Array.isArray(group.positions)) return group.positions.length;
+    if (typeof group === 'object') {
+      let count = 0;
+      Object.values(group).forEach(g => count += this.countPositionsInGroup(g));
+      return count;
+    }
+    return 0;
+  },
+
   groupPositions() {
     let grouped = { positions: this.positions };
 
     if (this.groupBy1) {
-      grouped = this.groupByField(grouped, this.groupBy1);
+      grouped = this.groupByField(this.positions, this.groupBy1);
     }
-    if (this.groupBy2) {
-      grouped = this.applyGrouping(grouped, this.groupBy2);
+    if (this.groupBy2 && this.groupBy1) {
+      grouped = this.applySecondaryGrouping(grouped, this.groupBy2);
     }
-    if (this.groupBy3) {
-      grouped = this.applyGrouping(grouped, this.groupBy3);
+    if (this.groupBy3 && this.groupBy1 && this.groupBy2) {
+      grouped = this.applyTertiaryGrouping(grouped, this.groupBy3);
     }
 
     return grouped;
   },
 
-  groupByField(data, field) {
+  groupByField(positions, field) {
     const result = {};
-    data.positions.forEach(pos => {
+    positions.forEach(pos => {
       const value = this.getFieldValue(pos, field) || 'Unspecified';
       if (!result[value]) result[value] = { positions: [] };
       result[value].positions.push(pos);
@@ -198,10 +232,21 @@ const PositionsTab = {
     return result;
   },
 
-  applyGrouping(grouped, field) {
+  applySecondaryGrouping(grouped, field) {
     const result = {};
     Object.keys(grouped).forEach(key => {
-      result[key] = this.groupByField(grouped[key], field);
+      result[key] = this.groupByField(grouped[key].positions, field);
+    });
+    return result;
+  },
+
+  applyTertiaryGrouping(grouped, field) {
+    const result = {};
+    Object.keys(grouped).forEach(key1 => {
+      result[key1] = {};
+      Object.keys(grouped[key1]).forEach(key2 => {
+        result[key1][key2] = this.groupByField(grouped[key1][key2].positions, field);
+      });
     });
     return result;
   },
@@ -221,13 +266,6 @@ const PositionsTab = {
     }
   },
 
-  countPositions(group) {
-    if (group.positions) return group.positions.length;
-    let count = 0;
-    Object.values(group).forEach(g => count += this.countPositions(g));
-    return count;
-  },
-
   parseArray(jsonStr) {
     try {
       const parsed = JSON.parse(jsonStr);
@@ -240,10 +278,23 @@ const PositionsTab = {
   updateCountryFilter() {
     const countries = [...new Set(this.positions.map(p => p.country).filter(Boolean))].sort();
     const select = document.getElementById('countryFilter');
+    if (!select) return;
     const current = select.value;
     select.innerHTML = '<option value="">All Countries</option>';
     countries.forEach(c => {
       select.innerHTML += `<option value="${c}">${c}</option>`;
+    });
+    select.value = current;
+  },
+
+  updateJobTypeFilter() {
+    const jobTypes = [...new Set(this.positions.map(p => p.job_type).filter(Boolean))].sort();
+    const select = document.getElementById('jobTypeFilter');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">All Job Types</option>';
+    jobTypes.forEach(jt => {
+      select.innerHTML += `<option value="${jt}">${jt}</option>`;
     });
     select.value = current;
   },
