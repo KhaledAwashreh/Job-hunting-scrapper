@@ -228,12 +228,13 @@
       display: flex;
       gap: 10px;
       margin-bottom: 15px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      overflow-x: auto;
     }
 
     .filters select {
-      flex: 1;
-      min-width: 150px;
+      flex: 1 1 auto;
+      min-width: 140px;
       padding: 8px 12px;
       border: 1px solid #ddd;
       border-radius: 4px;
@@ -398,37 +399,16 @@
         <button id="refreshPositionsBtn">Refresh</button>
       </div>
       
-      <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-        <h4>Group Results By:</h4>
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
-          <div>
-            <label>First Grouping</label>
-            <select id="groupBy1">
-              <option value="">—</option>
-              <option value="jobType">Job Type</option>
-              <option value="locationType">Location</option>
-              <option value="level">Level</option>
-            </select>
-          </div>
-          <div>
-            <label>Second Grouping</label>
-            <select id="groupBy2">
-              <option value="">—</option>
-              <option value="jobType">Job Type</option>
-              <option value="locationType">Location</option>
-              <option value="level">Level</option>
-            </select>
-          </div>
-          <div>
-            <label>Third Grouping</label>
-            <select id="groupBy3">
-              <option value="">—</option>
-              <option value="jobType">Job Type</option>
-              <option value="locationType">Location</option>
-              <option value="level">Level</option>
-            </select>
-          </div>
-        </div>
+      <div class="filters" style="margin-top: 15px;">
+        <select id="filterJobType">
+          <option value="">Filter by Job Type</option>
+        </select>
+        <select id="filterLocation">
+          <option value="">Filter by Location Type</option>
+        </select>
+        <select id="filterLevel">
+          <option value="">Filter by Level</option>
+        </select>
       </div>
       
       <div id="positionsContainer">
@@ -438,14 +418,7 @@
 
     <!-- TAB 2: COMPANIES -->
     <div id="companies" class="tab-content">
-      <h2>Company Index & Country Selection</h2>
-      
-      <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
-        <h3>Filter by Countries:</h3>
-        <div id="countriesContainer">
-          <div class="empty-state">Loading countries...</div>
-        </div>
-      </div>
+      <h2>Companies</h2>
 
       <h3>Add New Company</h3>
       <form id="addCompanyForm" onsubmit="addCompany(event)">
@@ -523,7 +496,7 @@
 
   <!-- PROFILE MODAL -->
   <div id="profileModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
+    <div style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 550px; max-height: 90vh; overflow-y: auto;">
       <h3 id="profileFormTitle">Add Profile</h3>
       <form id="profileForm" onsubmit="ProfilesTab.saveProfile(event)">
         <div class="form-group">
@@ -533,22 +506,64 @@
 
         <div class="form-group">
           <label>Resume File</label>
-          <input type="text" id="profileResume" placeholder="e.g., resume.pdf" required>
+          <input type="file" id="profileResume" accept=".pdf,.doc,.docx" required>
+          <small style="display: block; margin-top: 5px; color: #999;">Accepted: PDF, DOC, DOCX</small>
         </div>
 
         <div class="form-group">
           <label>Job Types (Select multiple)</label>
-          <select id="profileJobTypes" multiple required style="min-height: 120px;">
+          <select id="profileJobTypes" multiple required style="min-height: 100px;">
             <option value="Backend">Backend</option>
             <option value="Frontend">Frontend</option>
             <option value="FullStack">Full Stack</option>
             <option value="DevOps">DevOps</option>
             <option value="QA">QA</option>
-            <option value="AI">AI/ML</option>
+            <option value="AI/ML">AI/ML</option>
             <option value="Mobile">Mobile</option>
             <option value="Data">Data</option>
+            <option value="Security">Security</option>
           </select>
           <small style="display: block; margin-top: 5px; color: #999;">Hold Ctrl/Cmd to select multiple</small>
+        </div>
+
+        <div class="form-group">
+          <label>Years of Experience (Select multiple)</label>
+          <select id="profileYearsExp" multiple style="min-height: 80px;">
+            <option value="0-1">0-1 years</option>
+            <option value="1-3">1-3 years</option>
+            <option value="3-5">3-5 years</option>
+            <option value="5-7">5-7 years</option>
+            <option value="7-10">7-10 years</option>
+            <option value="10+">10+ years</option>
+          </select>
+          <small style="display: block; margin-top: 5px; color: #999;">Leave empty for no preference</small>
+        </div>
+
+        <div class="form-group">
+          <label>Work Location Preference (Select multiple)</label>
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+              <input type="checkbox" id="workRemote" value="Remote"> Remote
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+              <input type="checkbox" id="workOnsite" value="On-site"> On-site
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+              <input type="checkbox" id="workHybrid" value="Hybrid"> Hybrid
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Seniority Level (Optional)</label>
+          <select id="profileSeniority">
+            <option value="">—</option>
+            <option value="Junior">Junior</option>
+            <option value="Mid-Level">Mid-Level</option>
+            <option value="Senior">Senior</option>
+            <option value="Lead">Lead</option>
+            <option value="Principal">Principal</option>
+          </select>
         </div>
 
         <div class="form-group">
