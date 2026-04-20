@@ -79,43 +79,51 @@ const ProfilesTab = {
 
     let html = '';
     this.profiles.forEach((profile, idx) => {
-      const jobTypesStr = Array.isArray(profile.job_types) ? profile.job_types.join(', ') : '';
+      const jobTypesStr = Array.isArray(profile.job_types) ? profile.job_types.join(', ') : profile.job_types;
+      const yearsExp = this.parseArray(profile.years_of_experience).join(', ') || 'Any';
+      const workLocs = this.parseArray(profile.work_location_preference).join(', ') || 'Any';
+      
       html += `
         <div class="accordion-item">
           <div class="accordion-header" onclick="ProfilesTab.toggleAccordion(${idx})">
-            <div class="accordion-title">
-              <h4>${profile.name}</h4>
-              <span class="profile-meta">${jobTypesStr}</span>
+            <div style="flex: 1;">
+              <h4 style="margin: 0 0 5px 0;">${profile.name}</h4>
+              <small style="color: #666;">${jobTypesStr}</small>
             </div>
             <span class="accordion-icon">▼</span>
           </div>
           <div class="accordion-content" id="accordion-${idx}">
-            <div class="profile-details">
-              <div class="detail-row">
-                <label>Profile Name:</label>
-                <span>${profile.name}</span>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                <strong>Job Types:</strong>
+                <div style="margin-top: 5px; color: #666;">${jobTypesStr}</div>
               </div>
-              <div class="detail-row">
-                <label>Resume File:</label>
-                <span>${profile.resume_file}</span>
+              <div>
+                <strong>Seniority Level:</strong>
+                <div style="margin-top: 5px; color: #666;">${profile.seniority_level || 'Not specified'}</div>
               </div>
-              <div class="detail-row">
-                <label>Job Types:</label>
-                <span>
-                  ${jobTypesStr}
-                </span>
+              <div>
+                <strong>Years of Experience:</strong>
+                <div style="margin-top: 5px; color: #666;">${yearsExp}</div>
+              </div>
+              <div>
+                <strong>Work Location:</strong>
+                <div style="margin-top: 5px; color: #666;">${workLocs}</div>
+              </div>
+              <div style="grid-column: 1/-1;">
+                <strong>Resume:</strong>
+                <div style="margin-top: 5px; color: #666;">${profile.resume_file}</div>
               </div>
               ${profile.secondary_category ? `
-              <div class="detail-row">
-                <label>Secondary Category:</label>
-                <span>${profile.secondary_category}</span>
+              <div style="grid-column: 1/-1;">
+                <strong>Secondary Category:</strong>
+                <div style="margin-top: 5px; color: #666;">${profile.secondary_category}</div>
               </div>
               ` : ''}
-              <div class="button-group">
-                <button onclick="ProfilesTab.editProfile(${profile.id})">Edit</button>
-                <button onclick="ProfilesTab.updateCV(${profile.id})">Update CV</button>
-                <button class="danger" onclick="ProfilesTab.deleteProfile(${profile.id})">Delete</button>
-              </div>
+            </div>
+            <div style="margin-top: 15px; display: flex; gap: 10px;">
+              <button onclick="ProfilesTab.editProfile(${profile.id})" style="flex: 1;">Edit</button>
+              <button onclick="ProfilesTab.deleteProfile(${profile.id})" class="danger" style="flex: 1;">Delete</button>
             </div>
           </div>
         </div>
@@ -127,7 +135,18 @@ const ProfilesTab = {
 
   toggleAccordion(idx) {
     const content = document.getElementById(`accordion-${idx}`);
-    content.classList.toggle('open');
+    if (content) {
+      content.classList.toggle('active');
+    }
+  },
+
+  parseArray(jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   },
 
   showAddProfileForm() {
@@ -135,6 +154,7 @@ const ProfilesTab = {
     document.getElementById('profileFormTitle').textContent = 'Add New Profile';
     document.getElementById('profileForm').reset();
     document.getElementById('profileForm').setAttribute('data-profile-id', '');
+    document.getElementById('profileSeniority').value = '';
     modal.classList.add('open');
   },
 
@@ -142,9 +162,24 @@ const ProfilesTab = {
     event.preventDefault();
     
     const name = document.getElementById('profileName').value;
-    const resume_file = document.getElementById('profileResume').value || 'resume.pdf';
+    const resumeFile = document.getElementById('profileResume');
+    let resume_file = 'resume.pdf';
+    if (resumeFile.files && resumeFile.files.length > 0) {
+      resume_file = resumeFile.files[0].name;
+    }
+    
     const jobTypesMulti = document.getElementById('profileJobTypes');
     const job_types = Array.from(jobTypesMulti.selectedOptions).map(o => o.value);
+    
+    const yearsExpMulti = document.getElementById('profileYearsExp');
+    const years_of_experience = Array.from(yearsExpMulti.selectedOptions).map(o => o.value);
+    
+    const workLocPrefs = [];
+    if (document.getElementById('workRemote').checked) workLocPrefs.push('Remote');
+    if (document.getElementById('workOnsite').checked) workLocPrefs.push('On-site');
+    if (document.getElementById('workHybrid').checked) workLocPrefs.push('Hybrid');
+    
+    const seniority_level = document.getElementById('profileSeniority').value || null;
     const secondary_category = document.getElementById('profileSecondary').value;
     const profileId = document.getElementById('profileForm').getAttribute('data-profile-id');
 
@@ -157,10 +192,20 @@ const ProfilesTab = {
       const url = profileId ? `/api/profiles/${profileId}` : '/api/profiles';
       const method = profileId ? 'PATCH' : 'POST';
 
+      const payload = { 
+        name, 
+        resume_file, 
+        job_types, 
+        years_of_experience,
+        work_location_preference: workLocPrefs,
+        secondary_category 
+      };
+      if (seniority_level) payload.seniority_level = seniority_level;
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, resume_file, job_types, secondary_category })
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
@@ -181,21 +226,34 @@ const ProfilesTab = {
 
     document.getElementById('profileFormTitle').textContent = 'Edit Profile';
     document.getElementById('profileName').value = profile.name;
-    document.getElementById('profileResume').value = profile.resume_file;
     document.getElementById('profileSecondary').value = profile.secondary_category || '';
+    document.getElementById('profileSeniority').value = profile.seniority_level || '';
     
-    // Set multi-select
+    // Clear file input for edit mode
+    const fileInput = document.getElementById('profileResume');
+    fileInput.value = '';
+    
+    // Set multi-select for job types
     const jobTypesSelect = document.getElementById('profileJobTypes');
     Array.from(jobTypesSelect.options).forEach(opt => {
       opt.selected = profile.job_types.includes(opt.value);
     });
 
+    // Set years of experience
+    const yearsExpSelect = document.getElementById('profileYearsExp');
+    const yearsExp = this.parseArray(profile.years_of_experience);
+    Array.from(yearsExpSelect.options).forEach(opt => {
+      opt.selected = yearsExp.includes(opt.value);
+    });
+
+    // Set work location preferences
+    const workLocs = this.parseArray(profile.work_location_preference);
+    document.getElementById('workRemote').checked = workLocs.includes('Remote');
+    document.getElementById('workOnsite').checked = workLocs.includes('On-site');
+    document.getElementById('workHybrid').checked = workLocs.includes('Hybrid');
+
     document.getElementById('profileForm').setAttribute('data-profile-id', profileId);
     document.getElementById('profileModal').classList.add('open');
-  },
-
-  updateCV(profileId) {
-    alert('CV upload feature coming soon!');
   },
 
   async deleteProfile(profileId) {
