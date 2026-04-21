@@ -11,8 +11,14 @@ const LOG_LEVELS = {
 
 const CURRENT_LEVEL = LOG_LEVELS[process.env.LOG_LEVEL || 'INFO'] || LOG_LEVELS.INFO;
 
+// Track if we're in test mode
+const isTestMode = process.env.NODE_ENV === 'test';
+
 class Logger {
   log(level, message, meta = {}) {
+    // Suppress logging in test mode
+    if (isTestMode) return;
+    
     if (LOG_LEVELS[level] >= CURRENT_LEVEL) {
       const time = new Date().toISOString();
       const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
