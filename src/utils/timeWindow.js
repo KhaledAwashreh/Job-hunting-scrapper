@@ -1,5 +1,6 @@
 /**
  * Time Window Utilities - Handle job posting recency filtering
+ * @module timeWindow
  */
 
 const TIME_WINDOWS = {
