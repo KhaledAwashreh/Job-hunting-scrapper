@@ -3,6 +3,7 @@ const path = require('path');
 const { parse } = require('csv-parse/sync');
 
 const csvPath = path.join(__dirname, '../../data/search-params.csv');
+// Required columns for valid CSV format
 const REQUIRED_CSV_COLUMNS = ['title', 'country'];
 
 async function parseSearchParams() {
