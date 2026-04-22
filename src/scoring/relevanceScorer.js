@@ -56,7 +56,19 @@ ${resumeTexts}`
     });
 
     const text = message.content[0].type === 'text' ? message.content[0].text : '';
-    const parsed = JSON.parse(text);
+    
+    // Handle JSON parsing with fallback
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      console.warn('Failed to parse scoring response as JSON:', parseErr.message);
+      return {
+        score: 0,
+        matched_resume: null,
+        reasoning: 'Scoring response parsing failed'
+      };
+    }
 
     return {
       score: Math.min(100, Math.max(0, parseInt(parsed.score) || 0)),
