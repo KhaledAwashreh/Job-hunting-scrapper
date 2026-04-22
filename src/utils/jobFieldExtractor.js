@@ -1,7 +1,9 @@
 /**
  * Job Field Extractor - Extract job type, location type, level from job postings
+ * Used for categorizing and filtering scraped job positions
  */
 
+// Keywords that indicate a position is closed/expired
 const CLOSED_KEYWORDS = [
   'closed', 'expired', 'no longer hiring', 'application closed', 
   'position filled', 'not accepting', 'not taking applications',
