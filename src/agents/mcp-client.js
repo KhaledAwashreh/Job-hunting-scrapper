@@ -14,7 +14,7 @@ async function invokeMCPScraperAgent(careerUrl, criteria = {}) {
     country = null,
     seniority = null,
     keywords = null,
-    timeout = 60000
+    timeout = 60000  // 60 second default timeout for MCP scraping
   } = criteria;
 
   let taskDescription = `Navigate to ${careerUrl} and extract job postings. `;
