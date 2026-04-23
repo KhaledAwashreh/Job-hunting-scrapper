@@ -4,6 +4,7 @@ const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 
 const resumesDir = path.join(__dirname, '../../data/resumes');
+// Truncate resumes to 10k chars to fit within Claude API token limits
 const MAX_RESUME_LENGTH = 10000;
 
 async function parseResumes() {
