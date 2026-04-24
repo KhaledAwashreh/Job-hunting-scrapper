@@ -10,7 +10,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 
 // Real-world interaction delays (milliseconds)
 const INTERACTION_DELAYS = {
-  AFTER_INPUT_FILL: 500,        // User types, UI debounces
+  AFTER_INPUT_FILL: 500,         // User types, UI debounces
   AFTER_CLICK: 2000,             // Network latency + rendering
   BETWEEN_INTERACTIONS: 1000,    // Be respectful to server
   AFTER_PAGE_LOAD: 3000,         // Wait for dynamic content
