@@ -2,6 +2,8 @@ const initSqlJs = require('sql.js');
 const fs = require('fs');
 const path = require('path');
 
+// sql.js is a pure JavaScript implementation of SQLite
+// No native compilation required - works on all platforms
 const dbPath = path.join(__dirname, '../../jobs.db');
 let database = null;
 
