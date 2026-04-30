@@ -1,4 +1,4 @@
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
@@ -9,31 +9,34 @@ const MAX_RESUME_LENGTH = 10000;
 
 async function parseResumes() {
   try {
-    if (!fs.existsSync(resumesDir)) {
+    try {
+      await fs.access(resumesDir);
+    } catch {
       return [];
     }
 
-    const files = fs.readdirSync(resumesDir)
+    const files = await fs.readdir(resumesDir);
+    const filteredFiles = files
       .filter(f => f.endsWith('.pdf') || f.endsWith('.docx') || f.endsWith('.txt'))
       .sort();
 
     const resumes = [];
     let index = 1;
 
-    for (const filename of files) {
+    for (const filename of filteredFiles) {
       const filepath = path.join(resumesDir, filename);
 
       try {
         let text = '';
 
         if (filename.endsWith('.txt')) {
-          text = fs.readFileSync(filepath, 'utf-8');
+          text = await fs.readFile(filepath, 'utf-8');
         } else if (filename.endsWith('.pdf')) {
-          const buffer = fs.readFileSync(filepath);
+          const buffer = await fs.readFile(filepath);
           const data = await pdfParse(buffer);
           text = data.text;
         } else if (filename.endsWith('.docx')) {
-          const buffer = fs.readFileSync(filepath);
+          const buffer = await fs.readFile(filepath);
           const result = await mammoth.extractRawText({ buffer });
           text = result.value;
         }
