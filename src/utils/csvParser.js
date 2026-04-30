@@ -5,8 +5,10 @@ const { parse } = require('csv-parse/sync');
 const csvPath = path.join(__dirname, '../../data/search-params.csv');
 // Required columns for valid CSV format
 const REQUIRED_CSV_COLUMNS = ['title', 'country'];
+// Valid seniority levels
+const VALID_SENIORITY = ['junior', 'mid', 'senior', 'lead', 'principal', 'staff'];
 
-async function parseSearchParams() {
+function parseSearchParams() {
   try {
     if (!fs.existsSync(csvPath)) {
       return [];
@@ -42,13 +44,18 @@ async function parseSearchParams() {
           throw new Error(`Row ${idx + 1}: country is required and cannot be empty`);
         }
 
+        // Validate seniority if present
+        if (record.seniority && !VALID_SENIORITY.includes(record.seniority.trim().toLowerCase())) {
+          console.warn(`Row ${idx + 1}: Invalid seniority "${record.seniority}" - ignoring`);
+        }
+
         validatedRecords.push({
           title: record.title.trim(),
           keywords: record.keywords
             ? record.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0)
             : [],
           country: record.country.trim(),
-          seniority: record.seniority ? record.seniority.trim() : null,
+          seniority: record.seniority ? record.seniority.trim().toLowerCase() : null,
           remote: record.remote === 'yes' || record.remote === 'true'
         });
       } catch (rowErr) {
