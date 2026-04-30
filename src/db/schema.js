@@ -70,13 +70,19 @@ async function initializeDatabase() {
     try {
       db.run(`ALTER TABLE profiles ADD COLUMN seniority_level TEXT`);
     } catch (e) {
-      // Column already exists, ignore
+      // Only suppress "column already exists" errors, log others
+      if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
+        console.error('Error adding seniority_level column:', e.message);
+      }
     }
     // Add years_of_experience column if missing
     try {
       db.run(`ALTER TABLE profiles ADD COLUMN years_of_experience TEXT DEFAULT '[]'`);
     } catch (e) {
-      // Column may already exist, ignore
+      // Only suppress "column already exists" errors, log others
+      if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
+        console.error('Error adding years_of_experience column:', e.message);
+      }
     }
 
   db.run(`
