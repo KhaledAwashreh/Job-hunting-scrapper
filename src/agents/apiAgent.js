@@ -6,7 +6,7 @@ async function scrapeGreenhouse(slug) {
     const response = await axios.get(url, { timeout: 10000 });
 
     if (!response.data || !response.data.jobs) {
-      return null;
+      return [];
     }
 
     return response.data.jobs.map(job => ({
@@ -19,7 +19,7 @@ async function scrapeGreenhouse(slug) {
     })).filter(j => j.title);
   } catch (error) {
     console.error('Greenhouse API error:', error.message);
-    return null;
+    return [];
   }
 }
 
@@ -29,7 +29,7 @@ async function scrapeLever(slug) {
     const response = await axios.get(url, { timeout: 10000 });
 
     if (!response.data || !response.data.postings) {
-      return null;
+      return [];
     }
 
     return response.data.postings.map(job => ({
@@ -42,7 +42,7 @@ async function scrapeLever(slug) {
     })).filter(j => j.title);
   } catch (error) {
     console.error('Lever API error:', error.message);
-    return null;
+    return [];
   }
 }
 
