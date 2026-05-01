@@ -97,16 +97,46 @@ function extractCountry(locationText) {
   if (!locationText) return '';
 
   const countryMap = {
+    // Western Europe
     'netherlands': 'Netherlands',
     'spain': 'Spain',
     'germany': 'Germany',
     'uk': 'United Kingdom',
     'united kingdom': 'United Kingdom',
+    'great britain': 'United Kingdom',
     'us': 'United States',
     'usa': 'United States',
     'united states': 'United States',
     'france': 'France',
     'canada': 'Canada',
+    'italy': 'Italy',
+    'portugal': 'Portugal',
+    'belgium': 'Belgium',
+    'switzerland': 'Switzerland',
+    'austria': 'Austria',
+    'sweden': 'Sweden',
+    'norway': 'Norway',
+    'denmark': 'Denmark',
+    'finland': 'Finland',
+    'ireland': 'Ireland',
+    'poland': 'Poland',
+    'greece': 'Greece',
+    // North America
+    'mexico': 'Mexico',
+    // Asia
+    'japan': 'Japan',
+    'south korea': 'South Korea',
+    'singapore': 'Singapore',
+    'india': 'India',
+    'china': 'China',
+    'australia': 'Australia',
+    'new zealand': 'New Zealand',
+    // Middle East
+    'uae': 'United Arab Emirates',
+    'saudi arabia': 'Saudi Arabia',
+    'jordan': 'Jordan',
+    'lebanon': 'Lebanon',
+    'israel': 'Israel',
   };
 
   const lower = locationText.toLowerCase();
