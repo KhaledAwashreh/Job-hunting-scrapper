@@ -1,7 +1,16 @@
 const axios = require('axios');
 
+// Rate limiting: minimum delay between API requests (ms)
+const API_RATE_LIMIT_MS = 1000;
+
+async function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function scrapeGreenhouse(slug) {
   try {
+    // Apply rate limiting
+    await delay(API_RATE_LIMIT_MS);
     const url = `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`;
     const response = await axios.get(url, { timeout: 10000 });
 
@@ -25,6 +34,8 @@ async function scrapeGreenhouse(slug) {
 
 async function scrapeLever(slug) {
   try {
+    // Apply rate limiting
+    await delay(API_RATE_LIMIT_MS);
     const url = `https://api.lever.co/v0/postings/${slug}?mode=json`;
     const response = await axios.get(url, { timeout: 10000 });
 
