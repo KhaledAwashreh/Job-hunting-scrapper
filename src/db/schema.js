@@ -34,7 +34,7 @@ async function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS positions (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       hash            TEXT UNIQUE NOT NULL,
-      company_id      INTEGER REFERENCES companies(id),
+      company_id      INTEGER REFERENCES companies(id) ON DELETE CASCADE,
       country         TEXT,
       title           TEXT,
       description     TEXT,
