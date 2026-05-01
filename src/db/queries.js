@@ -145,8 +145,9 @@ function addPosition(hash, companyId, country, title, description, qualification
     const result = runQuery('SELECT last_insert_rowid() as id');
     return { id: result[0]?.id || null, isDuplicate: false };
   } catch (e) {
-    // Duplicate hash - UNIQUE constraint violation
-    if (e.message && e.message.includes('UNIQUE')) {
+    // Duplicate hash - UNIQUE constraint violation (sql.js throws "UNIQUE constraint failed")
+    const errMsg = e.message || '';
+    if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('UNIQUE')) {
       return { id: null, isDuplicate: true };
     }
     // Unexpected error - re-throw
