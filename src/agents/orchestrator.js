@@ -104,11 +104,22 @@ async function runScraper() {
     const profiles = getAllProfiles();
     console.log(`Loaded ${profiles.length} profile(s)`);
 
-    // Parse job types for each profile
-    const profilesWithParsed = profiles.map(p => ({
-      ...p,
-      parsed_job_types: JSON.parse(p.job_types || '[]')
-    }));
+    // Parse job types for each profile with error handling
+    const profilesWithParsed = profiles.map(p => {
+      let parsedJobTypes = [];
+      try {
+        parsedJobTypes = JSON.parse(p.job_types || '[]');
+        if (!Array.isArray(parsedJobTypes)) {
+          parsedJobTypes = [];
+        }
+      } catch (parseErr) {
+        console.error(`Invalid JSON in profile ${p.id} job_types: ${parseErr.message}`);
+      }
+      return {
+        ...p,
+        parsed_job_types: parsedJobTypes
+      };
+    });
 
     // Load search params
     const searchParams = await parseSearchParams();
