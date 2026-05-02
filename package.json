@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "AI-powered job hunting scraper with resume matching",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node src/server.js"
+    "dev": "node src/server.js",
+    "test": "echo \"Running tests...\" && node test-*.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
