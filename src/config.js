@@ -8,4 +8,6 @@ const MODELS = {
   OLLAMA_DEFAULT: process.env.OLLAMA_MODEL || 'mistral',
 };
 
-module.exports = { MODELS };
+const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY || '';
+
+module.exports = { MODELS, FIRECRAWL_API_KEY };
