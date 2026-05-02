@@ -1,4 +1,4 @@
-const { chromium } = require('playwright');
+const { FirecrawlApp } = require('@firecrawl/sdk');
 const { invokeMCPScraperAgent } = require('./mcp-client');
 const { extractJobsIntelligently, extractCompanyMetadata } = require('./semantic-extractor');
 const {
@@ -15,6 +15,15 @@ const MEMORY_LIMITS = {
   MAX_HEAP_MB: 512,
   MAX_JOBS_IN_MEMORY: 500,
 };
+
+// Initialize Firecrawl client
+let firecrawlClient = null;
+function getFirecrawlClient() {
+  if (!firecrawlClient && process.env.FIRECRAWL_API_KEY) {
+    firecrawlClient = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
+  }
+  return firecrawlClient;
+}
 
 /**
  * Monitor memory pressure during scraping
@@ -50,7 +59,7 @@ function monitorMemoryPressure(allJobs) {
  * @returns {Promise<Array>} Array of jobs from all pages
  */
 async function scrapeBrowser(careerUrl, company = null) {
-  console.log(`\n[Playwright] Starting scraping for ${careerUrl}`);
+  console.log(`\n[Firecrawl] Starting scraping for ${careerUrl}`);
 
   // STRATEGY 1: Try MCP agent first (most powerful, uses Claude with full context)
   if (process.env.ANTHROPIC_API_KEY) {
@@ -70,128 +79,80 @@ async function scrapeBrowser(careerUrl, company = null) {
     }
   }
 
-  // STRATEGY 2: Playwright + Intelligent Navigation + Semantic Extraction (fallback)
-  console.log('  → Strategy 2: Playwright + Form Navigation + Extraction');
-  return await scrapeBrowserWithIntelligentNavigation(careerUrl, company);
+  // STRATEGY 2: Firecrawl (replaces Playwright)
+  console.log('  → Strategy 2: Firecrawl API');
+  return await scrapeWithFirecrawl(careerUrl, company);
 }
 
 /**
- * Full pipeline: Load → Analyze Forms → Fill → Extract → Paginate
+ * Scrape using Firecrawl API
  */
-async function scrapeBrowserWithIntelligentNavigation(careerUrl, company) {
-  let browser = null;
-  let context = null;
+async function scrapeWithFirecrawl(careerUrl, company) {
   const allJobs = [];
-  let pageCount = 0;
-  const maxPages = 5; // Safety limit to prevent infinite loops
+  const firecrawl = getFirecrawlClient();
+
+  if (!firecrawl) {
+    console.warn('  ⚠ Firecrawl API key not set, falling back to empty results');
+    return [];
+  }
 
   try {
-    browser = await chromium.launch({ headless: true });
-    context = await browser.newContext();
-    const page = await context.newPage();
-
-    await page.setDefaultTimeout(15000);
-    console.log('  → Loading page with Playwright...');
+    console.log('  → Scraping with Firecrawl...');
     
-    try {
-      await page.goto(careerUrl, { waitUntil: 'networkidle' });
-    } catch (navErr) {
-      console.error(`Navigation failed: ${navErr.message}`);
-      throw new Error(`Failed to load ${careerUrl}: ${navErr.message}`);
+    // Scrape the career page with Firecrawl
+    const scrapeResult = await firecrawl.scrapeUrl(careerUrl, {
+      formats: ['markdown', 'html'],
+      waitFor: 5000, // Wait for dynamic content to load
+      timeout: 30000,
+    });
+
+    if (!scrapeResult.success) {
+      console.error(`  ✗ Firecrawl scrape failed: ${scrapeResult.error}`);
+      return [];
     }
 
-    const initialHtml = await page.content();
-    console.log(`  ✓ Page loaded (${initialHtml.length} bytes)`);
-
-    // LOOP: Process each page
-    while (pageCount < maxPages) {
-      pageCount++;
-      console.log(`\n  [Page ${pageCount}/${maxPages}]`);
-
-      // Get current HTML
-      const htmlContent = await page.content();
-
-      // Phase 1: Analyze forms and fill intelligently
-      console.log('  Phase 1: Form Analysis & Filling');
-      const formFields = await analyzePageForms(page, htmlContent);
-
-      if (formFields) {
-        const strategy = await generateFillStrategy(formFields, {
-          country: company?.country,
-          job_types: company?.job_types,
-          seniority_level: company?.seniority_level,
-        });
-
-        if (strategy) {
-          const filled = await executeFillStrategy(page, strategy);
-          if (filled && strategy.submit_button) {
-            await clickSearchButton(page, strategy.submit_button);
-          }
-        }
-      }
-
-      // Phase 2: Extract jobs from current page intelligently
-      console.log('  Phase 2: Job Extraction (Semantic)');
-      const pageHtml = await page.content();
-      const pageJobs = await extractJobsIntelligently(pageHtml, {
-        name: company?.name || 'unknown',
-        country: company?.country,
-        url: careerUrl,
-      });
-
-      if (pageJobs && pageJobs.length > 0) {
-        allJobs.push(...pageJobs);
-        console.log(`  ✓ Extracted ${pageJobs.length} jobs from page ${pageCount} (total: ${allJobs.length})`);
-      } else {
-        console.log(`  ℹ No jobs found on page ${pageCount}`);
-      }
-
-      // Memory pressure check
-      if (!monitorMemoryPressure(allJobs)) {
-        console.log('  ✗ Memory pressure detected - stopping scraper');
-        break;
-      }
-
-      // Phase 3: Check for pagination and navigate
-      console.log('  Phase 3: Pagination Check');
-      const pagination = await detectPaginationControl(page, pageHtml);
-
-      if (pagination) {
-        const navigated = await navigateToNextPage(page, pagination);
-        if (!navigated) {
-          console.log('  ℹ Pagination navigation failed - stopping');
-          break;
-        }
-        
-        // Respect rate limits between pages
-        await page.waitForTimeout(INTERACTION_DELAYS.BETWEEN_INTERACTIONS);
-      } else {
-        console.log('  ℹ No pagination - all pages scraped');
-        break;
-      }
+    const htmlContent = scrapeResult.data.html;
+    if (!htmlContent) {
+      console.warn('  ⚠ No HTML content returned from Firecrawl');
+      return [];
     }
 
-    console.log(`\n  ✓ Scraping complete: ${allJobs.length} total jobs from ${pageCount} page(s)`);
+    // Extract jobs from the scraped HTML
+    console.log('  Phase 1: Job Extraction (Semantic)');
+    const pageJobs = await extractJobsIntelligently(htmlContent, {
+      name: company?.name || 'unknown',
+      country: company?.country,
+      url: careerUrl,
+    });
+
+    if (pageJobs && pageJobs.length > 0) {
+      allJobs.push(...pageJobs);
+      console.log(`  ✓ Extracted ${pageJobs.length} jobs from initial page (total: ${allJobs.length})`);
+    } else {
+      console.log(`  ℹ No jobs found on initial page`);
+    }
+
+    // Memory pressure check
+    if (!monitorMemoryPressure(allJobs)) {
+      console.log('  ✗ Memory pressure detected - stopping scraper');
+      return allJobs;
+    }
+
+    // Check for pagination (simplified, Firecrawl handles some pagination)
+    console.log('  Phase 2: Pagination Check');
+    const pagination = detectPaginationControl(null, htmlContent);
+    if (pagination) {
+      console.log('  ℹ Pagination detected, but Firecrawl handles single-page scrapes. For multi-page, use Firecrawl crawl instead.');
+      // Note: Full multi-page support would use firecrawl.crawlUrl() with maxPages
+    } else {
+      console.log('  ℹ No pagination - all pages scraped');
+    }
+
+    console.log(`\n  ✓ Scraping complete: ${allJobs.length} total jobs`);
     return allJobs;
   } catch (error) {
-    console.error(`  ✗ Scraping failed: ${error.message}`);
+    console.error(`  ✗ Firecrawl scraping failed: ${error.message}`);
     return allJobs.length > 0 ? allJobs : [];
-  } finally {
-    // Ensure proper resource cleanup regardless of success/failure
-    if (context) {
-      try {
-        await context.close();
-      } catch (ctxErr) {
-        console.warn(`Warning closing browser context: ${ctxErr.message}`);
-      }
-    }
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (brErr) {
-        console.warn(`Warning closing browser: ${brErr.message}`);
-      }
-    }
   }
 }
 
