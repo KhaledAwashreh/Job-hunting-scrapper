@@ -1,7 +1,7 @@
 /**
  * Semantic Extractor Sub-Agent
  * Intelligently extracts job listings from page HTML using Claude/Ollama
- * Encapsulates all LLM reasoning - called by playwrightAgent
+ * Encapsulates all LLM reasoning - called by webScrapingAgent
  */
 
 const { Anthropic } = require('@anthropic-ai/sdk');

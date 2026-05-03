@@ -3,7 +3,7 @@
  * Intelligently fills forms, clicks buttons, navigates pages
  * Includes human-like delays and intelligent wait strategies
  *
- * Called by playwrightAgent.js to traverse career pages
+ * Called by webScrapingAgent.js to traverse career pages
  */
 
 const Anthropic = require('@anthropic-ai/sdk');

@@ -1,4 +1,4 @@
-const { FirecrawlApp } = require('firecrawl-js');
+const { FirecrawlApp } = require('@mendable/firecrawl-js');
 const { invokeMCPScraperAgent } = require('./mcp-client');
 const { extractJobsIntelligently, extractCompanyMetadata } = require('./semantic-extractor');
 const {
@@ -58,8 +58,8 @@ function monitorMemoryPressure(allJobs) {
  * @param {object} company - { id, name, country, platform }
  * @returns {Promise<Array>} Array of jobs from all pages
  */
-async function scrapeBrowser(careerUrl, company = null) {
-  console.log(`\n[Firecrawl] Starting scraping for ${careerUrl}`);
+async function scrapeWebsite(careerUrl, company = null) {
+  console.log(`\n[WebScraping] Starting scraping for ${careerUrl}`);
 
   // STRATEGY 1: Try MCP agent first (most powerful, uses Claude with full context)
   if (process.env.ANTHROPIC_API_KEY) {
@@ -81,13 +81,13 @@ async function scrapeBrowser(careerUrl, company = null) {
 
   // STRATEGY 2: Firecrawl (replaces Playwright)
   console.log('  → Strategy 2: Firecrawl API');
-  return await scrapeWithFirecrawl(careerUrl, company);
+  return await scrapeWithFirecrawlAPI(careerUrl, company);
 }
 
 /**
  * Scrape using Firecrawl API
  */
-async function scrapeWithFirecrawl(careerUrl, company) {
+async function scrapeWithFirecrawlAPI(careerUrl, company) {
   const allJobs = [];
   const firecrawl = getFirecrawlClient();
 
@@ -157,6 +157,6 @@ async function scrapeWithFirecrawl(careerUrl, company) {
 }
 
 module.exports = {
-  scrapeBrowser,
+  scrapeWebsite,
   monitorMemoryPressure,
 };

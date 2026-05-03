@@ -6,7 +6,7 @@ const { parseResumes } = require('../utils/resumeParser');
 
 
 const { scrapeByPlatform } = require('./apiAgent');
-const { scrapeBrowser } = require('./playwrightAgent');
+const { scrapeWebsite } = require('./webScrapingAgent');
 const { scorePosition } = require('../scoring/relevanceScorer');
 const { hashJob } = require('../utils/hasher');
 const { extractAllFields, matchesProfile } = require('../utils/jobFieldExtractor');
@@ -154,10 +154,10 @@ async function runScraper() {
           }
         }
 
-        // Fall back to Playwright if API fails or unknown platform
+        // Fall back to WebScraping if API fails or unknown platform
         if (!jobs) {
           try {
-            jobs = await scrapeBrowser(company.career_url, company);
+            jobs = await scrapeWebsite(company.career_url, company);
             if (jobs && jobs.length > 0) {
               console.log(`  ✓ Playwright found ${jobs.length} positions`);
             } else {
