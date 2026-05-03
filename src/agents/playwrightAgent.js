@@ -1,4 +1,4 @@
-const { FirecrawlApp } = require('@firecrawl/sdk');
+const { FirecrawlApp } = require('firecrawl-js');
 const { invokeMCPScraperAgent } = require('./mcp-client');
 const { extractJobsIntelligently, extractCompanyMetadata } = require('./semantic-extractor');
 const {
