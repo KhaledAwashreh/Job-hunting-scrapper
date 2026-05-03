@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const { parseSearchParams } = require('../utils/csvParser');
 const { parseResumes } = require('../utils/resumeParser');
+const { detectLanguage } = require('../utils/languageDetector');
 
 
 
@@ -213,11 +214,15 @@ async function runScraper() {
               continue;
             }
 
+            // Detect language of job description
+            const langInfo = detectLanguage(jobWithCompany.description || '');
+            console.log(`  Language detected: ${langInfo.language} (${langInfo.code})`);
+
             // Score position (general scoring)
             let scoreData = { score: 0, matched_resume: null, reasoning: 'No resumes loaded' };
             if (resumes.length > 0) {
               try {
-                scoreData = await scorePosition(jobWithCompany, resumes);
+                scoreData = await scorePosition(jobWithCompany, resumes, langInfo.language);
               } catch (scoreError) {
                 console.error(`    Error scoring: ${scoreError.message}`);
                 scoreData = { score: 0, matched_resume: null, reasoning: 'Scoring error' };

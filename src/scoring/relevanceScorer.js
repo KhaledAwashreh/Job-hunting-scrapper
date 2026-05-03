@@ -5,7 +5,37 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-async function scorePosition(job, resumes) {
+/**
+ * Translate text to English using Claude API
+ * @param {string} text - Text to translate
+ * @param {string} sourceLang - Source language name
+ * @returns {Promise<string>} Translated text
+ */
+async function translateToEnglish(text, sourceLang) {
+  if (!text || sourceLang === 'English') return text;
+
+  try {
+    const message = await client.messages.create({
+      model: MODELS.CLAUDE_FAST, // Use fast model for translation
+      max_tokens: 4000,
+      messages: [{
+        role: 'user',
+        content: `Translate the following job posting from ${sourceLang} to English. 
+Keep technical terms, company names, and job titles intact. 
+Return ONLY the translated text, no explanations.\n\n${text}`
+      }]
+    });
+
+    const translated = message.content[0].type === 'text' ? message.content[0].text : text;
+    console.log(`  ✓ Translated from ${sourceLang} to English (${text.length} → ${translated.length} chars)`);
+    return translated;
+  } catch (error) {
+    console.error(`  ⚠ Translation failed: ${error.message}`);
+    return text; // Return original on failure
+  }
+}
+
+async function scorePosition(job, resumes, language = 'English') {
   if (!job.title || !job.description) {
     return {
       score: 0,
@@ -22,14 +52,26 @@ async function scorePosition(job, resumes) {
     };
   }
 
+  // Translate job description and qualifications if not in English
+  let jobDescription = job.description;
+  let jobQualifications = job.qualifications || 'Not specified';
+
+  if (language !== 'English') {
+    console.log(`  → Translating job from ${language} to English...`);
+    jobDescription = await translateToEnglish(jobDescription, language);
+    if (job.qualifications) {
+      jobQualifications = await translateToEnglish(job.qualifications, language);
+    }
+  }
+
   const resumeTexts = resumes.map((r, i) => `--- RESUME ${i + 1} (${r.filename}) ---\n${r.text}`).join('\n\n');
   const maxResumeIndex = Math.min(resumes.length, 10);
   const resumeRange = `1-${maxResumeIndex}`;
 
   const prompt = `You are a job-resume relevance scorer.
-
+  
 You will be given a job posting and candidate resumes. Your job is to:
-1. Score how well the job matches each candidate's background (0–100)
+1. Score how well the job matches each candidate's background (0-100)
 2. Identify which resume (${resumeRange}) is the best match
 3. Write a one-sentence reasoning
 
@@ -38,10 +80,10 @@ Respond ONLY with valid JSON in this exact shape:
 
 --- JOB ---
 Title: ${job.title}
-Description: ${job.description}
-Qualifications: ${job.qualifications || 'Not specified'}
+Description: ${jobDescription}
+Qualifications: ${jobQualifications}
 
-${resumeTexts}`
+${resumeTexts}`;
 
   try {
     const message = await client.messages.create({
