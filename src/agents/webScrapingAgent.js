@@ -1,15 +1,5 @@
 const { FirecrawlApp } = require('@mendable/firecrawl-js');
 const { invokeMCPScraperAgent } = require('./mcp-client');
-const { extractJobsIntelligently, extractCompanyMetadata } = require('./semantic-extractor');
-const {
-  analyzePageForms,
-  generateFillStrategy,
-  executeFillStrategy,
-  clickSearchButton,
-  detectPaginationControl,
-  navigateToNextPage,
-  INTERACTION_DELAYS,
-} = require('./form-navigator');
 
 const MEMORY_LIMITS = {
   MAX_HEAP_MB: 512,
@@ -79,15 +69,16 @@ async function scrapeWebsite(careerUrl, company = null) {
     }
   }
 
-  // STRATEGY 2: Firecrawl (replaces Playwright)
-  console.log('  → Strategy 2: Firecrawl API');
-  return await scrapeWithFirecrawlAPI(careerUrl, company);
+  // STRATEGY 2: Firecrawl with JSON extraction (intelligent, handles pagination)
+  console.log('  → Strategy 2: Firecrawl API (JSON extraction)');
+  return await scrapeWithFirecrawlJSON(careerUrl, company);
 }
 
 /**
- * Scrape using Firecrawl API
+ * Scrape using Firecrawl API with intelligent JSON extraction
+ * Firecrawl automatically handles: dynamic content, pagination, anti-bot
  */
-async function scrapeWithFirecrawlAPI(careerUrl, company) {
+async function scrapeWithFirecrawlJSON(careerUrl, company) {
   const allJobs = [];
   const firecrawl = getFirecrawlClient();
 
@@ -97,62 +88,79 @@ async function scrapeWithFirecrawlAPI(careerUrl, company) {
   }
 
   try {
-    console.log('  → Scraping with Firecrawl...');
+    console.log('  → Scraping with Firecrawl (JSON extraction)...');
     
-    // Scrape the career page with Firecrawl
-    const scrapeResult = await firecrawl.scrapeUrl(careerUrl, {
-      formats: ['markdown', 'html'],
-      waitFor: 5000, // Wait for dynamic content to load
-      timeout: 30000,
+    // Use Firecrawl's crawlUrl for multi-page support with JSON extraction
+    const crawlResult = await firecrawl.crawlUrl(careerUrl, {
+      maxPages: 5, // Safety limit
+      formats: ['json'],
+      jsonOptions: {
+        prompt: `Extract all job postings from this page. For each job, extract:
+          - title (string)
+          - description (string, max 2000 chars)
+          - qualifications (string, max 1000 chars)
+          - publishDate (string, format: YYYY-MM-DD if available)
+          - link (string, full URL)
+          - company (string, company name)
+          - location (string, city/country)
+          - language (string, detect the language: English, German, French, etc.)
+        
+        Return as JSON array of job objects.`,
+        schema: {
+          jobs: [{
+            title: "string",
+            description: "string",
+            qualifications: "string",
+            publishDate: "string",
+            link: "string",
+            company: "string",
+            location: "string",
+            language: "string"
+          }]
+        }
+      },
+      waitFor: 5000,
+      timeout: 60000,
     });
 
-    if (!scrapeResult.success) {
-      console.error(`  ✗ Firecrawl scrape failed: ${scrapeResult.error}`);
+    if (!crawlResult.success) {
+      console.error(`  ✗ Firecrawl crawl failed: ${crawlResult.error}`);
       return [];
     }
 
-    const htmlContent = scrapeResult.data.html;
-    if (!htmlContent) {
-      console.warn('  ⚠ No HTML content returned from Firecrawl');
-      return [];
+    // Extract jobs from Firecrawl response
+    const crawledData = crawlResult.data;
+    
+    if (crawledData && crawledData.jobs && Array.isArray(crawledData.jobs)) {
+      // Single page result
+      allJobs.push(...crawledData.jobs);
+    } else if (Array.isArray(crawledData)) {
+      // Multi-page result (array of page results)
+      for (const pageData of crawledData) {
+        if (pageData.jobs && Array.isArray(pageData.jobs)) {
+          allJobs.push(...pageData.jobs);
+        }
+      }
     }
 
-    // Extract jobs from the scraped HTML
-    console.log('  Phase 1: Job Extraction (Semantic)');
-    const pageJobs = await extractJobsIntelligently(htmlContent, {
-      name: company?.name || 'unknown',
-      country: company?.country,
-      url: careerUrl,
-    });
+    // Normalize job format (ensure consistent fields)
+    const normalizedJobs = allJobs.map(job => ({
+      title: job.title || '',
+      description: (job.description || '').substring(0, 2000),
+      qualifications: (job.qualifications || '').substring(0, 1000),
+      publishDate: job.publishDate || '',
+      link: job.link || '',
+      company: job.company || company?.name || '',
+      country: job.location || company?.country || '',
+      language: job.language || 'English'
+    })).filter(j => j.title);
 
-    if (pageJobs && pageJobs.length > 0) {
-      allJobs.push(...pageJobs);
-      console.log(`  ✓ Extracted ${pageJobs.length} jobs from initial page (total: ${allJobs.length})`);
-    } else {
-      console.log(`  ℹ No jobs found on initial page`);
-    }
+    console.log(`  ✓ Firecrawl extracted ${normalizedJobs.length} jobs (from ${allJobs.length} raw)`);
+    return normalizedJobs;
 
-    // Memory pressure check
-    if (!monitorMemoryPressure(allJobs)) {
-      console.log('  ✗ Memory pressure detected - stopping scraper');
-      return allJobs;
-    }
-
-    // Check for pagination (simplified, Firecrawl handles some pagination)
-    console.log('  Phase 2: Pagination Check');
-    const pagination = detectPaginationControl(null, htmlContent);
-    if (pagination) {
-      console.log('  ℹ Pagination detected, but Firecrawl handles single-page scrapes. For multi-page, use Firecrawl crawl instead.');
-      // Note: Full multi-page support would use firecrawl.crawlUrl() with maxPages
-    } else {
-      console.log('  ℹ No pagination - all pages scraped');
-    }
-
-    console.log(`\n  ✓ Scraping complete: ${allJobs.length} total jobs`);
-    return allJobs;
   } catch (error) {
     console.error(`  ✗ Firecrawl scraping failed: ${error.message}`);
-    return allJobs.length > 0 ? allJobs : [];
+    return [];
   }
 }
 
