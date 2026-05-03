@@ -1,11 +1,10 @@
 /**
  * Semantic Extractor Sub-Agent
- * Intelligently extracts job listings from page HTML using Claude/Ollama
+ * Intelligently extracts job listings from page HTML using configurable LLM
  * Encapsulates all LLM reasoning - called by webScrapingAgent
  */
 
-const { Anthropic } = require('@anthropic-ai/sdk');
-const axios = require('axios');
+const { createClient } = require('../utils/llmFactory');
 const { MODELS } = require('../config');
 const {
   getExtractionPrompt,
@@ -15,7 +14,7 @@ const {
 } = require('../utils/extractionPrompts');
 
 /**
- * Extract jobs from HTML content intelligently using Claude/Ollama
+ * Extract jobs from HTML content intelligently using configured LLM
  * @param {string} htmlContent - Full page HTML
  * @param {object} companyContext - { name, country, url }
  * @returns {Promise<Array>} Array of extracted jobs
@@ -27,21 +26,20 @@ async function extractJobsIntelligently(htmlContent, companyContext = {}) {
     : htmlContent;
 
   try {
-    // Try Claude first (if API key available)
-    if (process.env.ANTHROPIC_API_KEY) {
-      try {
-        console.log('  → Attempting Claude for extraction...');
-        return await extractWithClaude(truncatedHtml, companyContext);
-      } catch (error) {
-        console.warn(`  ⚠ Claude extraction failed (${error.message}), trying Ollama...`);
-      }
+    // Try primary LLM (Claude by default, configurable via env)
+    const provider = process.env.EXTRACTION_PROVIDER || 'anthropic';
+    try {
+      console.log(`  → Attempting ${provider} for extraction...`);
+      return await extractWithLLM(truncatedHtml, companyContext, provider);
+    } catch (error) {
+      console.warn(`  ⚠ ${provider} extraction failed (${error.message}), trying fallback...`);
     }
 
     // Fallback to Ollama
-    if (process.env.OLLAMA_API_KEY || process.env.OLLAMA_BASE_URL) {
+    if (process.env.OLLAMA_BASE_URL || process.env.OLLAMA_MODEL) {
       try {
         console.log('  → Attempting Ollama for extraction...');
-        return await extractWithOllama(truncatedHtml, companyContext);
+        return await extractWithLLM(truncatedHtml, companyContext, 'ollama');
       } catch (error) {
         console.warn(`  ⚠ Ollama extraction failed (${error.message})`);
       }
@@ -56,63 +54,30 @@ async function extractJobsIntelligently(htmlContent, companyContext = {}) {
 }
 
 /**
- * Call Claude API for intelligent extraction
+ * Call any LLM via the factory for intelligent extraction
  */
-async function extractWithClaude(htmlContent, companyContext) {
-  const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
+async function extractWithLLM(htmlContent, companyContext, provider) {
+  const client = createClient(provider, {
+    apiKey: provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : null
   });
 
   const prompt = getExtractionPrompt(htmlContent, companyContext);
 
   try {
-    const response = await client.messages.create({
-      model: MODELS.CLAUDE_MAIN,
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+    const response = await client.complete(prompt, {
+      model: provider === 'anthropic' ? MODELS.CLAUDE_MAIN : MODELS.OLLAMA_DEFAULT,
+      maxTokens: 4096
     });
 
-    const content = response.content[0].type === 'text' ? response.content[0].text : '';
+    const content = response.text;
     const jobs = parseExtractionResponse(content);
 
-    // Validate results
+    // Validate results using same LLM
     await validateExtractionResults(jobs, client);
 
     return jobs;
   } catch (error) {
-    throw new Error(`Claude extraction failed: ${error.message}`);
-  }
-}
-
-/**
- * Call Ollama API for intelligent extraction
- */
-async function extractWithOllama(htmlContent, companyContext) {
-  const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-  const model = MODELS.OLLAMA_DEFAULT;
-  const prompt = getExtractionPrompt(htmlContent, companyContext);
-
-  try {
-    const response = await axios.post(
-      `${baseUrl}/api/generate`,
-      {
-        model,
-        prompt,
-        stream: false,
-      },
-      { timeout: INTELLIGENT_EXTRACTION_CONFIG.timeout }
-    );
-
-    const content = response.data.response || '';
-    const jobs = parseExtractionResponse(content);
-    return jobs;
-  } catch (error) {
-    throw new Error(`Ollama extraction failed: ${error.message}`);
+    throw new Error(`${provider} extraction failed: ${error.message}`);
   }
 }
 
@@ -136,7 +101,7 @@ function parseExtractionResponse(content) {
 
     // Try to parse as JSON
     const parsed = JSON.parse(jsonStr);
-    
+
     // Ensure it's an array
     if (!Array.isArray(parsed)) {
       console.warn('LLM returned non-array response');
@@ -162,27 +127,21 @@ function parseExtractionResponse(content) {
 }
 
 /**
- * Validate extraction results using Claude
- * Ensures data quality by asking Claude to check its own work
+ * Validate extraction results using LLM
+ * Ensures data quality by asking LLM to check its own work
  */
-async function validateExtractionResults(jobs, claudeClient) {
+async function validateExtractionResults(jobs, llmClient) {
   if (jobs.length === 0) return;
 
   try {
     const validationPrompt = getValidationPrompt(jobs);
-    
-    const response = await claudeClient.messages.create({
+
+    const response = await llmClient.complete(validationPrompt, {
       model: MODELS.CLAUDE_MAIN,
-      max_tokens: 1024,
-      messages: [
-        {
-          role: 'user',
-          content: validationPrompt,
-        },
-      ],
+      maxTokens: 1024
     });
 
-    const content = response.content[0].type === 'text' ? response.content[0].text : '{}';
+    const content = response.text;
     const validation = JSON.parse(content);
 
     if (!validation.valid) {
@@ -224,24 +183,15 @@ async function extractCompanyMetadata(htmlContent) {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
   try {
-    const client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-
+    const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
     const prompt = getCompanyExtractionPrompt(htmlContent);
 
-    const response = await client.messages.create({
+    const response = await client.complete(prompt, {
       model: MODELS.CLAUDE_MAIN,
-      max_tokens: 512,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+      maxTokens: 512
     });
 
-    const content = response.content[0].type === 'text' ? response.content[0].text : '{}';
+    const content = response.text;
     const metadata = JSON.parse(content);
     return metadata;
   } catch (error) {

@@ -6,7 +6,7 @@
  * Called by webScrapingAgent.js to traverse career pages
  */
 
-const Anthropic = require('@anthropic-ai/sdk');
+const { createClient } = require('./llmFactory');
 
 // Real-world interaction delays (milliseconds)
 const INTERACTION_DELAYS = {
@@ -67,7 +67,7 @@ async function analyzePageForms(page, htmlContent) {
 
       // Utility function to escape special CSS characters
       function escapeSelector(str) {
-        return str.replace(/[!"#$%&'()*+,./:;?@\[\\\]^`{|}~]/g, '\\$&');
+        return str.replace(/[!"#$%&'()*+,./:;=?@\[\\\]^`{|}~]/g, '\\$&');
       }
 
       // Utility functions for selector generation
@@ -131,13 +131,13 @@ async function analyzePageForms(page, htmlContent) {
 }
 
 /**
- * Use Claude to understand form semantics and generate fill strategy
+ * Use LLM to understand form semantics and generate fill strategy
  */
 async function generateFillStrategy(formFields, profile) {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
   try {
-    console.log('    → Claude analyzing form semantics...');
+    console.log('    → LLM analyzing form semantics...');
 
     const prompt = `You are analyzing a job search form. Match form fields to profile criteria.
 
@@ -168,20 +168,13 @@ RESPONSE FORMAT:
   "confidence": 0.9
 }`;
 
-    const client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-
-    const response = await client.messages.create({
+    const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.complete(prompt, {
       model: 'claude-3-5-sonnet-20241022',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: prompt,
-      }],
+      maxTokens: 1024
     });
 
-    const content = response.content[0].type === 'text' ? response.content[0].text : '';
+    const content = response.text;
     const strategy = JSON.parse(content);
 
     console.log(`    ✓ Generated fill strategy (${strategy.fill_strategy?.length || 0} fields)`);

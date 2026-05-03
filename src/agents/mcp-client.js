@@ -1,8 +1,4 @@
-const Anthropic = require('@anthropic-ai/sdk');
-
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const { createClient } = require('../utils/llmFactory');
 
 async function invokeMCPScraperAgent(careerUrl, criteria = {}) {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -14,7 +10,7 @@ async function invokeMCPScraperAgent(careerUrl, criteria = {}) {
     country = null,
     seniority = null,
     keywords = null,
-    timeout = 60000  // 60 second default timeout for MCP scraping
+    timeout = 60000 // 60 second default timeout for MCP scraping
   } = criteria;
 
   let taskDescription = `Navigate to ${careerUrl} and extract job postings. `;
@@ -55,23 +51,14 @@ Example format:
 `;
 
   try {
-    const message = await client.messages.create(
-      {
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 8192,
-        messages: [
-          {
-            role: 'user',
-            content: taskDescription
-          }
-        ]
-      },
-      {
-        timeout
-      }
-    );
+    const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.complete(taskDescription, {
+      model: 'claude-3-5-sonnet-20241022',
+      maxTokens: 8192,
+      timeout
+    });
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const responseText = response.text;
 
     // Try to extract JSON from response
     const jsonMatch = responseText.match(/\[[\s\S]*\]/);
@@ -115,21 +102,18 @@ Always:
 If blocked or unable to access, return empty array with error message.`;
 
   try {
-    const message = await client.messages.create(
+    const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.complete(
+      `Extract jobs from: ${careerUrl}\n\nCriteria: ${JSON.stringify(criteria)}\n\nReturn JSON array of jobs.`,
       {
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: `Extract jobs from: ${careerUrl}\n\nCriteria: ${JSON.stringify(criteria)}\n\nReturn JSON array of jobs.`
-          }
-        ]
+        maxTokens: 8192,
+        systemPrompt,
+        timeout: 60000
       }
     );
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
+    const responseText = response.text;
     const jsonMatch = responseText.match(/\[[\s\S]*\]/);
 
     if (jsonMatch) {

@@ -1,12 +1,8 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { createClient } = require('../utils/llmFactory');
 const { MODELS } = require('../config');
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
 /**
- * Translate text to English using Claude API
+ * Translate text to English using configured LLM
  * @param {string} text - Text to translate
  * @param {string} sourceLang - Source language name
  * @returns {Promise<string>} Translated text
@@ -15,18 +11,18 @@ async function translateToEnglish(text, sourceLang) {
   if (!text || sourceLang === 'English') return text;
 
   try {
-    const message = await client.messages.create({
-      model: MODELS.CLAUDE_FAST, // Use fast model for translation
-      max_tokens: 4000,
-      messages: [{
-        role: 'user',
-        content: `Translate the following job posting from ${sourceLang} to English. 
+    const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.complete(
+      `Translate the following job posting from ${sourceLang} to English. 
 Keep technical terms, company names, and job titles intact. 
-Return ONLY the translated text, no explanations.\n\n${text}`
-      }]
-    });
+Return ONLY the translated text, no explanations.\n\n${text}`,
+      {
+        model: MODELS.CLAUDE_FAST, // Use fast model for translation
+        maxTokens: 4000
+      }
+    );
 
-    const translated = message.content[0].type === 'text' ? message.content[0].text : text;
+    const translated = response.text;
     console.log(`  ✓ Translated from ${sourceLang} to English (${text.length} → ${translated.length} chars)`);
     return translated;
   } catch (error) {
@@ -86,18 +82,13 @@ Qualifications: ${jobQualifications}
 ${resumeTexts}`;
 
   try {
-    const message = await client.messages.create({
+    const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await client.complete(prompt, {
       model: MODELS.CLAUDE_MAIN,
-      max_tokens: 200,
-      messages: [
-        {
-          role: 'user',
-          content: prompt
-        }
-      ]
+      maxTokens: 200
     });
 
-    const text = message.content[0].type === 'text' ? message.content[0].text : '';
+    const text = response.text;
     
     // Handle JSON parsing with fallback
     let parsed;
