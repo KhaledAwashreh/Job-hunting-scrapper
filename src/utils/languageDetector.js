@@ -1,4 +1,4 @@
-const { franc } = require('franc-min');
+const { franc } = require('franc');
 
 // Map franc 3-letter codes to language names
 // Focus: European languages + Arabic
