@@ -1,4 +1,4 @@
-const franc = require('franc-min');
+const { franc } = require('franc-min');
 
 // Map franc 3-letter codes to language names
 // Focus: European languages + Arabic
@@ -41,6 +41,7 @@ const LANG_CODE_MAP = {
   
   // Middle East
   'ara': 'Arabic',
+  'arb': 'Arabic', // Modern Standard Arabic
 };
 
 // Languages we actively support (for translation decisions)
