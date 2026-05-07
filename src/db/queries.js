@@ -142,8 +142,10 @@ function addPosition(hash, companyId, country, title, description, qualification
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [hash, companyId, country, title, description, qualifications, publishDate, link, jobType, JSON.stringify(locationTypes || []), JSON.stringify(yearsExp || []), JSON.stringify(seniorityLevels || []), matchScore, matchedResume]
     );
-    const result = runQuery('SELECT last_insert_rowid() as id');
-    return { id: result[0]?.id || null, isDuplicate: false };
+    // Fetch the inserted position by hash to get the id (more reliable than last_insert_rowid in sql.js)
+    const inserted = runQuery('SELECT id FROM positions WHERE hash = ? LIMIT 1', [hash]);
+    const positionId = inserted[0]?.id || null;
+    return { id: positionId, isDuplicate: false };
   } catch (e) {
     // Duplicate hash - UNIQUE constraint violation (sql.js throws "UNIQUE constraint failed")
     const errMsg = e.message || '';
@@ -295,6 +297,63 @@ function getTimeWindowPreference() {
   return result[0]?.value || '30';
 }
 
+// Tailored Resumes functions
+function addTailoredResume(positionId, profileId, baseResumeText, tailoredText, version = 1) {
+  try {
+    runWrite(
+      `INSERT INTO tailored_resumes (position_id, profile_id, base_resume_text, tailored_text, version)
+       VALUES (?, ?, ?, ?, ?)`,
+      [positionId, profileId, baseResumeText, tailoredText, version]
+    );
+    // Fetch by unique constraint fields to get the id
+    const inserted = runQuery(
+      `SELECT id FROM tailored_resumes WHERE position_id = ? AND profile_id = ? AND version = ? LIMIT 1`,
+      [positionId, profileId, version]
+    );
+    return { id: inserted[0]?.id || null, isDuplicate: false };
+  } catch (e) {
+    const errMsg = e.message || '';
+    if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('UNIQUE')) {
+      return { id: null, isDuplicate: true };
+    }
+    throw e;
+  }
+}
+
+function getTailoredResumesForPosition(positionId) {
+  return runQuery(`
+    SELECT tr.*, p.name as profile_name, p.resume_file
+    FROM tailored_resumes tr
+    INNER JOIN profiles p ON tr.profile_id = p.id
+    WHERE tr.position_id = ?
+    ORDER BY tr.version DESC, tr.created_at DESC
+  `, [positionId]);
+}
+
+function getTailoredResumeById(tailoredResumeId) {
+  const result = runQuery(`
+    SELECT tr.*, p.name as profile_name, p.resume_file, pos.title as position_title, c.name as company_name
+    FROM tailored_resumes tr
+    INNER JOIN profiles p ON tr.profile_id = p.id
+    INNER JOIN positions pos ON tr.position_id = pos.id
+    LEFT JOIN companies c ON pos.company_id = c.id
+    WHERE tr.id = ?
+  `, [tailoredResumeId]);
+  return result[0];
+}
+
+function getNextVersionForPositionProfile(positionId, profileId) {
+  const result = runQuery(
+    `SELECT MAX(version) as max_version FROM tailored_resumes WHERE position_id = ? AND profile_id = ?`,
+    [positionId, profileId]
+  );
+  return (result[0]?.max_version || 0) + 1;
+}
+
+function deleteTailoredResume(tailoredResumeId) {
+  runWrite('DELETE FROM tailored_resumes WHERE id = ?', [tailoredResumeId]);
+}
+
 module.exports = {
   getAllCompanies,
   getActiveCompanies,
@@ -324,5 +383,10 @@ module.exports = {
   updatePositionProfileScore,
   unlinkPositionFromProfile,
   setTimeWindowPreference,
-  getTimeWindowPreference
+  getTimeWindowPreference,
+  addTailoredResume,
+  getTailoredResumesForPosition,
+  getTailoredResumeById,
+  getNextVersionForPositionProfile,
+  deleteTailoredResume
 };
