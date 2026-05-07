@@ -115,6 +115,20 @@ async function initializeDatabase() {
     );
   `);
 
+  // Tailored resumes table for resume customization feature
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tailored_resumes (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      position_id     INTEGER NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+      profile_id      INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      base_resume_text TEXT NOT NULL,
+      tailored_text   TEXT NOT NULL,
+      version         INTEGER DEFAULT 1,
+      created_at      TEXT DEFAULT (datetime('now')),
+      UNIQUE(position_id, profile_id, version)
+    );
+  `);
+
   database = db;
   saveDatabase();
 }
