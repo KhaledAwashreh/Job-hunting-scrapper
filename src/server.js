@@ -20,9 +20,17 @@ const {
   getProfileById,
   updateProfile,
   deleteProfile,
+  addTailoredResume,
+  getTailoredResumesForPosition,
+  getTailoredResumeById,
+  getNextVersionForPositionProfile,
+  deleteTailoredResume,
 } = require('./db/queries');
 const { parseResumes } = require('./utils/resumeParser');
+const { tailorResume } = require('./utils/resumeTailor');
 const { runScraper, getRunStatus, setTimeWindow, getTimeWindow } = require('./agents/orchestrator');
+const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require('docx'); // For DOCX generation
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib'); // For PDF generation
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -373,6 +381,267 @@ app.delete('/api/profiles/:id', (req, res) => {
     deleteProfile(id);
     res.json({ message: 'Profile deleted' });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== Tailored Resumes API =====
+// Generate a new tailored resume for a position
+app.post('/api/positions/:positionId/tailor', async (req, res) => {
+  try {
+    const { positionId } = req.params;
+    const { profileId } = req.body;
+
+    // 1. Validate position exists
+    const position = getPositionById(positionId);
+    if (!position) {
+      return res.status(404).json({ error: 'Position not found' });
+    }
+
+    // 2. Determine which profile to use
+    let targetProfileId = profileId;
+    if (!targetProfileId) {
+      // Use position's matched_resume index to find profile
+      if (!position.matched_resume) {
+        return res.status(400).json({ error: 'No profile specified and no matched resume for this position' });
+      }
+      // Find profile matching the resume index
+      const profiles = getAllProfiles();
+      const targetResume = loadedResumes.find(r => r.index === position.matched_resume);
+      if (!targetResume) {
+        return res.status(404).json({ error: 'Matched resume not found in loaded resumes' });
+      }
+      const profile = profiles.find(p => p.resume_file === targetResume.filename);
+      if (!profile) {
+        return res.status(404).json({ error: 'No profile matches the matched resume' });
+      }
+      targetProfileId = profile.id;
+    }
+
+    // 3. Validate profile exists
+    const profile = getProfileById(targetProfileId);
+    if (!profile) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    // 4. Get base resume text
+    const targetResume = loadedResumes.find(r => r.filename === profile.resume_file);
+    if (!targetResume) {
+      return res.status(404).json({ error: 'Base resume file not found for this profile' });
+    }
+    const baseResumeText = targetResume.text;
+
+    // 5. Get job tags and profile tags
+    const jobTags = [
+      position.job_type,
+      ...(Array.isArray(position.seniority_level) ? position.seniority_level : [position.seniority_level]).filter(Boolean)
+    ].filter(Boolean);
+    
+    let profileTags = [];
+    try {
+      profileTags = JSON.parse(profile.job_types || '[]');
+      const profileSeniority = profile.seniority_level ? [profile.seniority_level] : [];
+      profileTags = [...profileTags, ...profileSeniority].filter(Boolean);
+    } catch (e) {
+      console.warn('Failed to parse profile tags:', e.message);
+    }
+
+    // 6. Get next version number
+    const version = getNextVersionForPositionProfile(positionId, targetProfileId);
+
+    // 7. Generate tailored resume
+    const tailoredText = await tailorResume(
+      baseResumeText,
+      position,
+      profile,
+      jobTags,
+      profileTags
+    );
+
+    // 8. Save to database
+    const result = addTailoredResume(
+      positionId,
+      targetProfileId,
+      baseResumeText,
+      tailoredText,
+      version
+    );
+
+    if (!result.id) {
+      return res.status(500).json({ error: 'Failed to save tailored resume' });
+    }
+
+    // 9. Return the tailored resume
+    res.status(201).json({
+      id: result.id,
+      position_id: positionId,
+      profile_id: targetProfileId,
+      version,
+      tailored_text: tailoredText,
+      message: 'Tailored resume generated successfully'
+    });
+
+  } catch (error) {
+    console.error('Tailoring error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// List all tailored resumes for a position
+app.get('/api/positions/:positionId/tailored-resumes', (req, res) => {
+  try {
+    const { positionId } = req.params;
+    const tailoredResumes = getTailoredResumesForPosition(positionId);
+    res.json(tailoredResumes);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get a single tailored resume
+app.get('/api/tailored-resumes/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const tailoredResume = getTailoredResumeById(id);
+    if (!tailoredResume) {
+      return res.status(404).json({ error: 'Tailored resume not found' });
+    }
+    res.json(tailoredResume);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete a tailored resume
+app.delete('/api/tailored-resumes/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    deleteTailoredResume(id);
+    res.json({ message: 'Tailored resume deleted' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Download tailored resume as TXT/DOCX/PDF
+app.get('/api/tailored-resumes/:id/download', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { format = 'txt' } = req.query;
+
+    const tailoredResume = getTailoredResumeById(id);
+    if (!tailoredResume) {
+      return res.status(404).json({ error: 'Tailored resume not found' });
+    }
+
+    const filename = `tailored-resume-${tailoredResume.position_title}-v${tailoredResume.version}.${format}`;
+
+    if (format === 'txt') {
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(tailoredResume.tailored_text);
+    }
+
+    if (format === 'docx') {
+      // Generate DOCX in Harvard format
+      // Parse tailored text into paragraphs (split by newlines)
+      const paragraphs = tailoredResume.tailored_text.split('\n').map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return new Paragraph({ text: '' });
+
+        // Detect section headings (all caps, short lines)
+        if (trimmed === trimmed.toUpperCase() && trimmed.length < 50 && !trimmed.includes(' ')) {
+          return new Paragraph({
+            text: trimmed,
+            heading: HeadingLevel.HEADING_2,
+            bold: true,
+            spacing: { before: 200, after: 100 }
+          });
+        }
+
+        // Detect bullet points
+        if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
+          return new Paragraph({
+            text: trimmed.substring(2),
+            bullet: { level: 0 },
+            spacing: { before: 50, after: 50 }
+          });
+        }
+
+        // Regular text
+        return new Paragraph({
+          children: [new TextRun(trimmed)],
+          spacing: { before: 50, after: 50 }
+        });
+      });
+
+      const doc = new Document({
+        sections: [{
+          properties: {},
+          children: paragraphs
+        }]
+      });
+
+      const buffer = await Packer.toBuffer(doc);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(buffer);
+    }
+
+    if (format === 'pdf') {
+      // Generate PDF in Harvard format
+      const pdfDoc = await PDFDocument.create();
+      const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+      const timesRomanBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+      
+      let page = pdfDoc.addPage();
+      const { width, height } = page.getSize();
+      const fontSize = 11;
+      const margin = 50;
+      let y = height - margin;
+
+      // Split text into lines
+      const lines = tailoredResume.tailored_text.split('\n');
+      
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          y -= 10;
+          continue;
+        }
+
+        // Check if we need a new page
+        if (y < margin) {
+          page = pdfDoc.addPage();
+          y = height - margin;
+        }
+
+        // Detect section headings (all caps)
+        const isHeading = trimmed === trimmed.toUpperCase() && trimmed.length < 50 && !trimmed.includes(' ');
+        const font = isHeading ? timesRomanBold : timesRoman;
+        const size = isHeading ? 12 : fontSize;
+        const yOffset = isHeading ? 15 : 10;
+
+        page.drawText(trimmed, {
+          x: margin,
+          y,
+          font,
+          size,
+          color: rgb(0, 0, 0)
+        });
+
+        y -= yOffset;
+      }
+
+      const pdfBytes = await pdfDoc.save();
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(Buffer.from(pdfBytes));
+    }
+
+    return res.status(400).json({ error: 'Invalid format. Use txt, docx, or pdf' });
+  } catch (error) {
+    console.error('Download error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
