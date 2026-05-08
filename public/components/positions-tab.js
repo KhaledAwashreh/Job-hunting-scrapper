@@ -104,7 +104,7 @@ const PositionsTab = {
       const locationTypes = this.parseArray(pos.location_type);
       const levels = this.parseArray(pos.seniority_level);
 
-      html += `
+       html += `
         <tr>
           <td><span class="badge ${scoreClass}">${pos.match_score}</span></td>
           <td>${pos.country || '—'}</td>
@@ -118,6 +118,9 @@ const PositionsTab = {
             <span class="badge ${statusBadgeClass}">${pos.status}</span>
             <button style="margin-left: 5px; padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.updateStatus(${pos.id}, '${pos.status}')">
               Change
+            </button>
+            <button style="margin-left: 5px; padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.tailorResume(${pos.id})">
+              Tailor Resume
             </button>
           </td>
         </tr>
@@ -138,13 +141,13 @@ const PositionsTab = {
     
     let html = '<div class="grouped-positions">';
     
-    const renderGroup = (data, level = 1) => {
+     const renderGroup = (data, level = 1) => {
       if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0].title) {
         // Leaf node - show positions in a simple list
         data.forEach(pos => {
           const scoreClass = pos.match_score >= 70 ? 'badge-green' : pos.match_score >= 40 ? 'badge-amber' : 'badge-red';
           const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
-          
+           
           html += `
             <div style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
               <div style="display: flex; gap: 10px; align-items: center; font-size: 14px; flex-wrap: wrap;">
@@ -154,16 +157,19 @@ const PositionsTab = {
                 <span style="font-size: 12px; color: #666;">${pos.country}</span>
                 <a href="${pos.link}" target="_blank" style="font-size: 12px;">View</a>
                 <span class="badge ${statusBadgeClass}" style="margin-left: auto;">${pos.status}</span>
+                <button style="padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.tailorResume(${pos.id})">
+                  Tailor Resume
+                </button>
               </div>
             </div>
           `;
         });
-      } else if (data && typeof data === 'object' && data.positions && Array.isArray(data.positions)) {
+       } else if (data && typeof data === 'object' && data.positions && Array.isArray(data.positions)) {
         // Mixed node with positions array
         data.positions.forEach(pos => {
           const scoreClass = pos.match_score >= 70 ? 'badge-green' : pos.match_score >= 40 ? 'badge-amber' : 'badge-red';
           const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
-          
+           
           html += `
             <div style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
               <div style="display: flex; gap: 10px; align-items: center; font-size: 14px; flex-wrap: wrap;">
@@ -173,6 +179,9 @@ const PositionsTab = {
                 <span style="font-size: 12px; color: #666;">${pos.country}</span>
                 <a href="${pos.link}" target="_blank" style="font-size: 12px;">View</a>
                 <span class="badge ${statusBadgeClass}" style="margin-left: auto;">${pos.status}</span>
+                <button style="padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.tailorResume(${pos.id})">
+                  Tailor Resume
+                </button>
               </div>
             </div>
           `;
@@ -319,6 +328,67 @@ const PositionsTab = {
     } catch (error) {
       showError('Error: ' + error.message);
     }
+  },
+
+  async tailorResume(positionId) {
+    try {
+      showSuccess('Generating tailored resume...');
+      const res = await fetch(`/api/positions/${positionId}/tailor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to generate tailored resume');
+      }
+
+      const data = await res.json();
+      this.showTailoredModal(data.id, data.tailored_text, data.version);
+      showSuccess('Tailored resume generated!');
+    } catch (error) {
+      showError('Tailoring failed: ' + error.message);
+    }
+  },
+
+  showTailoredModal(tailoredId, tailoredText, version) {
+    // Create modal if not exists
+    let modal = document.getElementById('tailoredResumeModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'tailoredResumeModal';
+      modal.style = 'display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;';
+      modal.innerHTML = `
+        <div style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0;">Tailored Resume (v${version})</h3>
+            <div>
+              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'txt')" style="padding: 8px 12px; margin-right: 5px;">Download TXT</button>
+              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'docx')" style="padding: 8px 12px; margin-right: 5px;">Download DOCX</button>
+              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'pdf')" style="padding: 8px 12px; margin-right: 5px;">Download PDF</button>
+              <button onclick="document.getElementById('tailoredResumeModal').style.display = 'none'" style="padding: 8px 12px;">Close</button>
+            </div>
+          </div>
+          <textarea id="tailoredText" style="width: 100%; height: 60vh; padding: 15px; font-family: 'Times New Roman', serif; font-size: 12px; line-height: 1.5; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">${tailoredText}</textarea>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    } else {
+      // Update existing modal
+      modal.querySelector('h3').textContent = `Tailored Resume (v${version})`;
+      modal.querySelector('#tailoredText').value = tailoredText;
+      // Update download buttons
+      modal.querySelector('button[onclick*="txt"]').setAttribute('onclick', `PositionsTab.downloadTailored(${tailoredId}, 'txt')`);
+      modal.querySelector('button[onclick*="docx"]').setAttribute('onclick', `PositionsTab.downloadTailored(${tailoredId}, 'docx')`);
+      modal.querySelector('button[onclick*="pdf"]').setAttribute('onclick', `PositionsTab.downloadTailored(${tailoredId}, 'pdf')`);
+    }
+
+    modal.style.display = 'flex';
+  },
+
+  downloadTailored(tailoredId, format) {
+    window.open(`/api/tailored-resumes/${tailoredId}/download?format=${format}`, '_blank');
   }
 };
 
