@@ -6,3 +6,4 @@ data/resumes/
 dist/
 build/
 *.log
+.aider*
