@@ -22,6 +22,7 @@
     "AGENTS.md",
     ".opencode/agents/RESUME_ARCHITECTURE.md",
     ".opencode/agents/scraper.md",
+    ".opencode/agents/resume-tailor.md",
     ".opencode/skills/playwright-mcp.md"
   ]
 }
