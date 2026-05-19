@@ -27,13 +27,17 @@ function getActiveCompanies() {
   return runQuery('SELECT * FROM companies WHERE active = 1 ORDER BY name');
 }
 
-function addCompany(name, country, careerUrl, platform = 'custom') {
-  runWrite(
-    `INSERT INTO companies (name, country, career_url, platform) VALUES (?, ?, ?, ?)`,
-    [name, country, careerUrl, platform]
+function addCompany(name, country, careerUrl, platform = 'custom', platformSlug = null, apiUrl = null) {
+  const db = getDatabase();
+  const stmt = db.prepare(
+    `INSERT INTO companies (name, country, career_url, platform, platform_slug, api_url) VALUES (?, ?, ?, ?, ?, ?)`
   );
-  const result = runQuery('SELECT last_insert_rowid() as id');
-  return result[0]?.id || 1;
+  stmt.bind([name, country, careerUrl, platform, platformSlug, apiUrl]);
+  stmt.step();
+  stmt.free();
+  const id = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
+  saveDatabase();
+  return id;
 }
 
 function updateCompanyActive(companyId, active) {
@@ -44,7 +48,7 @@ function updateCompanyActive(companyId, active) {
 }
 
 function updateCompany(companyId, updates) {
-  const { name, country, career_url, platform } = updates;
+  const { name, country, career_url, platform, platform_slug, api_url } = updates;
   const fields = [];
   const values = [];
 
@@ -63,6 +67,14 @@ function updateCompany(companyId, updates) {
   if (platform !== undefined) {
     fields.push('platform = ?');
     values.push(platform);
+  }
+  if (platform_slug !== undefined) {
+    fields.push('platform_slug = ?');
+    values.push(platform_slug);
+  }
+  if (api_url !== undefined) {
+    fields.push('api_url = ?');
+    values.push(api_url);
   }
 
   if (fields.length === 0) return;
@@ -204,13 +216,15 @@ function getScrapeRunById(runId) {
 
 // Profile functions
 function addProfile(name, resumeFile, jobTypes, secondaryCategory, seniorityLevel, yearsOfExperience = [], workLocationPreference = []) {
-  runWrite(
+  const db = getDatabase();
+  db.run(
     `INSERT INTO profiles (name, resume_file, job_types, secondary_category, seniority_level, years_of_experience, work_location_preference)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [name, resumeFile, JSON.stringify(jobTypes), secondaryCategory, seniorityLevel || null, JSON.stringify(yearsOfExperience), JSON.stringify(workLocationPreference)]
   );
-  const result = runQuery('SELECT last_insert_rowid() as id');
-  return result[0]?.id || 1;
+  const id = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
+  saveDatabase();
+  return id;
 }
 
 function getAllProfiles() {

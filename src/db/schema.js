@@ -20,15 +20,29 @@ async function initializeDatabase() {
 
   db.run(`
     CREATE TABLE IF NOT EXISTS companies (
-      id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      name        TEXT NOT NULL,
-      country     TEXT NOT NULL,
-      career_url  TEXT NOT NULL,
-      platform    TEXT DEFAULT 'custom',
-      active      INTEGER DEFAULT 1,
-      created_at  TEXT DEFAULT (datetime('now'))
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT NOT NULL,
+      country       TEXT NOT NULL,
+      career_url    TEXT NOT NULL,
+      platform      TEXT DEFAULT 'custom',
+      platform_slug TEXT,
+      api_url       TEXT,
+      active        INTEGER DEFAULT 1,
+      created_at    TEXT DEFAULT (datetime('now'))
     );
   `);
+
+  // Add platform_slug and api_url columns to existing companies tables
+  try { db.run(`ALTER TABLE companies ADD COLUMN platform_slug TEXT`); } catch (e) {
+    if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
+      console.error('Error adding platform_slug column:', e.message);
+    }
+  }
+  try { db.run(`ALTER TABLE companies ADD COLUMN api_url TEXT`); } catch (e) {
+    if (!e.message.includes('duplicate column name') && !e.message.includes('already exists')) {
+      console.error('Error adding api_url column:', e.message);
+    }
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS positions (
