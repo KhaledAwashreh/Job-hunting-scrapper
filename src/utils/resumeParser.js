@@ -10,6 +10,10 @@ const MAX_RESUME_LENGTH = 10000;
 // In-memory cache for parsed resumes (key: filename, value: { mtime, text })
 const resumeCache = new Map();
 
+function clearResumeCache() {
+  resumeCache.clear();
+}
+
 async function parseResumes() {
   try {
     try {
@@ -101,4 +105,4 @@ async function parseResumes() {
   }
 }
 
-module.exports = { parseResumes };
+module.exports = { parseResumes, clearResumeCache };

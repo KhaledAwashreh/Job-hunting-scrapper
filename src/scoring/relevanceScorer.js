@@ -2,6 +2,64 @@ const { createClient } = require('../utils/llmFactory');
 const { MODELS } = require('../config');
 
 /**
+ * Extract key information from resume text for better matching
+ * @param {string} resumeText - The full resume text
+ * @returns {object} Summary of resume key points
+ */
+function extractResumeSummary(resumeText) {
+  const text = resumeText.toLowerCase();
+  
+  // Extract target job titles/roles
+  const rolePatterns = [
+    /software engineer/i, /backend developer/i, /frontend developer/i,
+    /full stack developer/i, /devops engineer/i, /data engineer/i,
+    /machine learning engineer/i, /ai engineer/i, /ml engineer/i,
+    /data scientist/i, /product manager/i, /technical lead/i,
+    /architect/i, /consultant/i, /sre/i, /platform engineer/i
+  ];
+  const foundRoles = rolePatterns.filter(p => p.test(text)).map(p => p.source);
+  
+  // Extract years of experience
+  const yearsMatch = text.match(/(\d+)\+?\s*years?\s*(of\s*)?experience/i);
+  const years = yearsMatch ? parseInt(yearsMatch[1]) : null;
+  
+  // Extract seniority keywords
+  const seniorityPatterns = {
+    'Junior': /junior|jr\.|entry.?level|graduate|intern/i,
+    'Mid-Level': /mid.?level|intermediate|mid.?senior/i,
+    'Senior': /senior|sr\.|lead|principal|staff/i,
+    'Principal/Architect': /principal|architect|director|head|chief/i
+  };
+  let seniority = 'Not specified';
+  for (const [level, pattern] of Object.entries(seniorityPatterns)) {
+    if (pattern.test(text)) {
+      seniority = level;
+      break;
+    }
+  }
+  
+  // Extract key skills (tech stack)
+  const skillPatterns = [
+    /java\s*(?:spring|springboot)?/i, /python/i, /javascript/i, /typescript/i,
+    /react/i, /node\.?js/i, /golang|go\s+lang/i, /rust/i, /c\+\+/i,
+    /aws|amazon\s*web\s*services/i, /azure/i, /gcp|google\s*cloud/i,
+    /kubernetes|k8s/i, /docker/i, /terraform/i, /ansible/i,
+    /sql/i, /postgresql|mysql|mongodb/i, /redis/i,
+    /machine learning|ml|deep learning/i, /tensorflow|pytorch/i,
+    /ai|artificial intelligence|llm|generative ai/i,
+    /spark|hadoop|kafka/i, /data pipeline/i
+  ];
+  const foundSkills = skillPatterns.filter(p => p.test(text)).map(p => p.source.replace(/[()]/g, '').trim());
+  
+  return {
+    targetRoles: foundRoles.length > 0 ? foundRoles.join(', ') : 'Not specified',
+    yearsExperience: years ? `${years}+ years` : 'Not specified',
+    seniority: seniority,
+    keySkills: foundSkills.length > 0 ? foundSkills.slice(0, 10).join(', ') : 'Not specified'
+  };
+}
+
+/**
  * Translate text to English using configured LLM
  * @param {string} text - Text to translate
  * @param {string} sourceLang - Source language name
@@ -56,11 +114,24 @@ async function scorePosition(job, resumes, language = 'English') {
     console.log(`  → Translating job from ${language} to English...`);
     jobDescription = await translateToEnglish(jobDescription, language);
     if (job.qualifications) {
-      jobQualifications = await translateToEnglish(job.qualifications, language);
+      jobQualifications = await translateToEnglish(jobQualifications, language);
     }
   }
 
-  const resumeTexts = resumes.map((r, i) => `--- RESUME ${i + 1} (${r.filename}) ---\n${r.text}`).join('\n\n');
+  // Build resume summaries with extracted key info
+  const resumeSummaries = resumes.map((r, i) => {
+    const summary = extractResumeSummary(r.text);
+    return `--- RESUME ${i + 1} (${r.filename}) ---
+SUMMARY:
+- Target Roles: ${summary.targetRoles}
+- Experience: ${summary.yearsExperience}
+- Seniority Level: ${summary.seniority}
+- Key Skills: ${summary.keySkills}
+
+FULL TEXT:
+${r.text.substring(0, 5000)}`; // Limit text length
+  }).join('\n\n');
+
   const maxResumeIndex = Math.min(resumes.length, 10);
   const resumeRange = `1-${maxResumeIndex}`;
 
@@ -71,6 +142,12 @@ You will be given a job posting and candidate resumes. Your job is to:
 2. Identify which resume (${resumeRange}) is the best match
 3. Write a one-sentence reasoning
 
+IMPORTANT MATCHING CRITERIA:
+- Job title should align with resume target roles
+- Required experience level should match resume seniority
+- Required skills should overlap with resume key skills
+- Consider years of experience requirements
+
 Respond ONLY with valid JSON in this exact shape:
 {"score": <number 0-100>, "matched_resume": <${resumeRange}>, "reasoning": "<one sentence>"}
 
@@ -78,8 +155,10 @@ Respond ONLY with valid JSON in this exact shape:
 Title: ${job.title}
 Description: ${jobDescription}
 Qualifications: ${jobQualifications}
+Required Seniority: ${job.seniorityLevel || 'Not specified'}
+Required Skills: ${job.jobType || 'Not specified'}
 
-${resumeTexts}`;
+${resumeSummaries}`;
 
   try {
     const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
