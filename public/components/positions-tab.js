@@ -74,7 +74,8 @@ const PositionsTab = {
     }
 
     this.renderFlat(filtered);
-    this.updateFilterDropdowns();
+    this.updateCountryFilter();
+    this.updateJobTypeFilter();
   },
 
   renderFlat(positions) {

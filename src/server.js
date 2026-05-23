@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const multer = require('multer');
 const { initializeDatabase } = require('./db/schema');
 const {
   getAllPositions,
@@ -29,6 +30,7 @@ const {
 const { parseResumes } = require('./utils/resumeParser');
 const { tailorResume } = require('./utils/resumeTailor');
 const { runScraper, getRunStatus, setTimeWindow, getTimeWindow } = require('./agents/orchestrator');
+const logger = require('./utils/logger');
 const { Document, Packer, Paragraph, TextRun, HeadingLevel } = require('docx'); // For DOCX generation
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib'); // For PDF generation
 
@@ -50,6 +52,32 @@ function isValidHttpUrl(urlStr) {
 
 // Rate limiting for scraper
 let lastScrapeStartTime = null;
+
+// Multer configuration for resume uploads
+const resumeStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, '../data/resumes'));
+  },
+  filename: (req, file, cb) => {
+    // Sanitize filename - replace spaces with underscores, remove special chars
+    const sanitized = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    cb(null, sanitized);
+  }
+});
+
+const resumeUpload = multer({
+  storage: resumeStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['.pdf', '.docx', '.txt'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowedTypes.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, DOCX, and TXT allowed.'));
+    }
+  }
+});
 const MIN_SCRAPE_INTERVAL_MS = 60000; // 1 minute
 
 app.use(express.json());
@@ -97,7 +125,7 @@ const validateCompanyInput = (req, res, next) => {
   if (!isValidHttpUrl(career_url)) {
     return res.status(400).json({ error: 'Invalid URL format (must be http/https)' });
   }
-  if (platform && !['greenhouse', 'lever', 'workday', 'custom'].includes(platform)) {
+  if (platform && !['greenhouse', 'lever', 'workday', 'custom', 'rss', 'json_api', 'workable'].includes(platform)) {
     return res.status(400).json({ error: 'Invalid platform' });
   }
   next();
@@ -199,9 +227,9 @@ app.get('/api/companies', (req, res) => {
 
 app.post('/api/companies', validateCompanyInput, (req, res) => {
   try {
-    const { name, country, career_url, platform } = req.body;
+    const { name, country, career_url, platform, platform_slug, api_url } = req.body;
 
-    const id = addCompany(name, country, career_url, platform || 'custom');
+    const id = addCompany(name, country, career_url, platform || 'custom', platform_slug || null, api_url || null);
     const company = getCompanyById(id);
     res.status(201).json(company);
   } catch (error) {
@@ -212,7 +240,7 @@ app.post('/api/companies', validateCompanyInput, (req, res) => {
 app.patch('/api/companies/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { name, country, career_url, platform, active } = req.body;
+    const { name, country, career_url, platform, platform_slug, api_url, active } = req.body;
 
     // Build updates object with only provided fields
     const updates = {};
@@ -220,6 +248,8 @@ app.patch('/api/companies/:id', (req, res) => {
     if (country !== undefined) updates.country = country;
     if (career_url !== undefined) updates.career_url = career_url;
     if (platform !== undefined) updates.platform = platform;
+    if (platform_slug !== undefined) updates.platform_slug = platform_slug;
+    if (api_url !== undefined) updates.api_url = api_url;
 
     // Update using the general updateCompany function
     if (Object.keys(updates).length > 0) {
@@ -277,7 +307,7 @@ app.post('/api/scrape/run', (req, res) => {
     lastScrapeStartTime = Date.now();
     // Start scraper asynchronously
     runScraper().catch(error => {
-      console.error('Scraper error:', error);
+      logger.error(`Scraper error: ${error.stack || error.message}`);
     });
 
     return res.status(202).json({ message: 'Scraper started', status: getRunStatus() });
@@ -307,6 +337,63 @@ app.get('/api/profiles', (req, res) => {
       work_location_preference: JSON.parse(p.work_location_preference || '[]')
     }));
     res.json(parsed);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===== Resume Upload API =====
+app.post('/api/resumes/upload', resumeUpload.single('resume'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Clear resume cache so the new file is picked up immediately
+    const { clearResumeCache } = require('./utils/resumeParser');
+    clearResumeCache();
+
+    res.json({
+      success: true,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      path: `/data/resumes/${req.file.filename}`
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/resumes', (req, res) => {
+  try {
+    const resumes = require('./utils/resumeParser').parseResumes();
+    resumes.then(files => {
+      res.json(files.map(r => ({
+        filename: r.filename,
+        textLength: r.text.length,
+        isTruncated: r.isTruncated
+      })));
+    }).catch(err => {
+      res.status(500).json({ error: err.message });
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/resumes/:filename', (req, res) => {
+  try {
+    const fs = require('fs');
+    const filename = req.params.filename;
+    const filepath = path.join(__dirname, '../data/resumes', filename);
+    
+    if (!fs.existsSync(filepath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    
+    fs.unlinkSync(filepath);
+    res.json({ success: true, deleted: filename });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -732,6 +819,19 @@ startup().then(() => {
   // Graceful shutdown handler
   process.on('SIGTERM', gracefulShutdown);
   process.on('SIGINT', gracefulShutdown);
+
+  // Global error handlers - write to errors.log
+  process.on('uncaughtException', (err) => {
+    logger.error(`UNCAUGHT_EXCEPTION: ${err.stack || err.message}`);
+    console.error('Uncaught exception:', err);
+    process.exit(1);
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    const reasonStr = reason instanceof Error ? reason.stack : String(reason);
+    logger.error(`UNHANDLED_REJECTION: ${reasonStr}`);
+    console.error('Unhandled rejection:', reason);
+  });
 
   function gracefulShutdown() {
     console.log('\nGraceful shutdown initiated...');

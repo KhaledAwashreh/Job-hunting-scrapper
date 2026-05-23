@@ -755,7 +755,8 @@
           showSuccess('Scraper started!');
           pollScrapeStatus();
         } else {
-          showError('Failed to start scraper');
+          const data = await res.json();
+          showError('Failed to start scraper: ' + (data.error || 'Unknown error'));
           document.getElementById('scrapeButton').disabled = false;
         }
       } catch (error) {

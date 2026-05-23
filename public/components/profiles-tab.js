@@ -160,25 +160,46 @@ const ProfilesTab = {
 
   async saveProfile(event) {
     event.preventDefault();
-    
+
     const name = document.getElementById('profileName').value;
     const resumeFile = document.getElementById('profileResume');
     let resume_file = 'resume.pdf';
+
+    // Upload resume file first if selected
     if (resumeFile.files && resumeFile.files.length > 0) {
-      resume_file = resumeFile.files[0].name;
+      const formData = new FormData();
+      formData.append('resume', resumeFile.files[0]);
+
+      try {
+        const uploadRes = await fetch('/api/resumes/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          resume_file = uploadData.filename;
+        } else {
+          showError('Failed to upload resume');
+          return;
+        }
+      } catch (error) {
+        showError('Error uploading resume: ' + error.message);
+        return;
+      }
     }
-    
+
     const jobTypesMulti = document.getElementById('profileJobTypes');
     const job_types = Array.from(jobTypesMulti.selectedOptions).map(o => o.value);
-    
+
     const yearsExpMulti = document.getElementById('profileYearsExp');
     const years_of_experience = Array.from(yearsExpMulti.selectedOptions).map(o => o.value);
-    
+
     const workLocPrefs = [];
     if (document.getElementById('workRemote').checked) workLocPrefs.push('Remote');
     if (document.getElementById('workOnsite').checked) workLocPrefs.push('On-site');
     if (document.getElementById('workHybrid').checked) workLocPrefs.push('Hybrid');
-    
+
     const seniority_level = document.getElementById('profileSeniority').value || null;
     const secondary_category = document.getElementById('profileSecondary').value;
     const profileId = document.getElementById('profileForm').getAttribute('data-profile-id');
@@ -192,13 +213,13 @@ const ProfilesTab = {
       const url = profileId ? `/api/profiles/${profileId}` : '/api/profiles';
       const method = profileId ? 'PATCH' : 'POST';
 
-      const payload = { 
-        name, 
-        resume_file, 
-        job_types, 
+      const payload = {
+        name,
+        resume_file,
+        job_types,
         years_of_experience,
         work_location_preference: workLocPrefs,
-        secondary_category 
+        secondary_category
       };
       if (seniority_level) payload.seniority_level = seniority_level;
 
