@@ -1,3 +1,11 @@
 title,keywords,country,seniority,remote
-Backend Engineer,"Java,Spring Boot,Python",Netherlands,Mid-Senior,yes
-MLOps Engineer,"Kubernetes,Docker,AI",Spain,Senior,yes
+Java Backend Engineer,"Java,Spring Boot,Microservices,REST,API,Kubernetes,Docker,PostgreSQL,Redis",Netherlands,senior,yes
+Backend Engineer,"Backend,Java,.NET,C#,Microservices,Spring Boot,Distributed Systems",Netherlands,senior,yes
+Platform Engineer,"Kubernetes,Docker,CI/CD,DevOps,AWS,Azure,Infrastructure,Cloud",Netherlands,mid,yes
+Java Backend Engineer,"Java,Spring Boot,Microservices,REST,API",Ireland,senior,yes
+Backend Engineer,"Java,.NET,Backend,Microservices,Distributed Systems",Ireland,senior,yes
+Java Backend Engineer,"Java,Spring Boot,Microservices,Fintech,API",Portugal,senior,yes
+Backend Engineer,"Java,.NET,Backend,Microservices",Spain,senior,yes
+AI/ML Engineer,"Agentic,AI,Python,LLM,Agent,Automation,Workflow",Remote EU,senior,yes
+Backend Engineer,"Java,.NET,Backend,Microservices,Distributed Systems",Remote EU,senior,yes
+Java Backend Engineer,"Java,Spring Boot,Microservices,API,Kubernetes",Remote EU,senior,yes
