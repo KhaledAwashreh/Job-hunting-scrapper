@@ -93,6 +93,7 @@ const PositionsTab = {
             <th>Level</th>
             <th>Link</th>
             <th>Status</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -115,14 +116,10 @@ const PositionsTab = {
           <td>${locationTypes.join(', ') || '—'}</td>
           <td>${levels.join(', ') || '—'}</td>
           <td class="link-cell"><a href="${pos.link}" target="_blank">View</a></td>
-          <td>
-            <span class="badge ${statusBadgeClass}">${pos.status}</span>
-            <button style="margin-left: 5px; padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.updateStatus(${pos.id}, '${pos.status}')">
-              Change
-            </button>
-            <button style="margin-left: 5px; padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.tailorResume(${pos.id})">
-              Tailor Resume
-            </button>
+          <td><span class="badge ${statusBadgeClass}">${pos.status}</span></td>
+          <td class="actions-cell">
+            <button class="btn-change" onclick="PositionsTab.updateStatus(${pos.id}, '${pos.status}')">Change</button>
+            <button class="btn-tailor" onclick="PositionsTab.tailorResume(${pos.id})">Tailor Resume</button>
           </td>
         </tr>
       `;
@@ -333,11 +330,31 @@ const PositionsTab = {
 
   async tailorResume(positionId) {
     try {
+      // 1. Fetch available profiles
+      const profilesRes = await fetch('/api/profiles');
+      const profiles = await profilesRes.json();
+
+      if (!profiles || profiles.length === 0) {
+        showError('No profiles configured. Create one in the Profiles tab first.');
+        return;
+      }
+
+      let selectedProfileId;
+
+      if (profiles.length === 1) {
+        // Single profile — use it automatically
+        selectedProfileId = profiles[0].id;
+      } else {
+        // Multiple profiles — ask user to pick one
+        selectedProfileId = await this.promptProfileSelection(profiles);
+        if (!selectedProfileId) return; // user cancelled
+      }
+
       showSuccess('Generating tailored resume...');
       const res = await fetch(`/api/positions/${positionId}/tailor`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
+        body: JSON.stringify({ profileId: selectedProfileId })
       });
 
       if (!res.ok) {
@@ -351,6 +368,52 @@ const PositionsTab = {
     } catch (error) {
       showError('Tailoring failed: ' + error.message);
     }
+  },
+
+  promptProfileSelection(profiles) {
+    return new Promise((resolve) => {
+      // Create a lightweight modal with profile options
+      const overlay = document.createElement('div');
+      overlay.className = 'profile-picker-overlay';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;';
+
+      const modal = document.createElement('div');
+      modal.style.cssText = 'background:white;padding:24px;border-radius:8px;min-width:400px;max-width:500px;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
+
+      modal.innerHTML = `
+        <h3 style="margin:0 0 16px;font-size:16px;">Select Profile for Tailoring</h3>
+        <p style="font-size:13px;color:#666;margin-bottom:16px;">Choose which profile/resume to use for tailoring this position:</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+          ${profiles.map(p => `
+            <button class="profile-option" data-id="${p.id}" style="padding:12px;border:1px solid #ddd;border-radius:4px;background:#f9f9f9;cursor:pointer;text-align:left;font-size:14px;transition:all 0.2s;">
+              <strong>${p.name}</strong>
+              <span style="display:block;font-size:12px;color:#666;margin-top:4px;">
+                ${Array.isArray(p.job_types) ? p.job_types.join(', ') : ''}${p.seniority_level ? ' — ' + p.seniority_level : ''}
+              </span>
+            </button>
+          `).join('')}
+        </div>
+        <button class="profile-picker-cancel" style="padding:8px 16px;border:1px solid #ccc;border-radius:4px;background:#fff;color:#333;cursor:pointer;font-size:13px;">Cancel</button>
+      `;
+
+      overlay.appendChild(modal);
+      document.body.appendChild(overlay);
+
+      // Handle selection
+      modal.querySelectorAll('.profile-option').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.body.removeChild(overlay);
+          resolve(parseInt(btn.dataset.id));
+        });
+        btn.addEventListener('mouseenter', () => { btn.style.borderColor = '#3498db'; btn.style.background = '#e8f4fd'; });
+        btn.addEventListener('mouseleave', () => { btn.style.borderColor = '#ddd'; btn.style.background = '#f9f9f9'; });
+      });
+
+      modal.querySelector('.profile-picker-cancel').addEventListener('click', () => {
+        document.body.removeChild(overlay);
+        resolve(null);
+      });
+    });
   },
 
   showTailoredModal(tailoredId, tailoredText, version) {
