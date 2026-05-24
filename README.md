@@ -1,10 +1,9 @@
-# Job Hunter — AI-Powered EU Job Scraper
+# Job Hunter — AI-Powered Job Scraper
 
-Scrapes engineering job openings from 49+ EU target companies, scores them against your resume, and helps you track applications — all from a dashboard UI.
+Scrapes engineering job openings from any company career page, scores them against your resume, and helps you track applications — all from a dashboard UI.
 
 ## Features
 
-- **49 EU target companies** — Stripe, Adyen, Intercom, Revolut, Wise, Mollie, and more
 - **Multi-platform scraping** — Greenhouse API, Lever, Workable, RSS, JSON API, Firecrawl, Puppeteer
 - **Profile-driven filtering** — Only stores roles matching your profiles (Java Backend, Backend, Platform, AI/ML Engineer)
 - **Title-only classification** — Word-boundary matching rejects non-engineering roles even when descriptions mention technical keywords
@@ -54,13 +53,11 @@ Drop `.pdf`, `.docx`, or `.txt` files into `data/resumes/` and restart the serve
 
 ### 3. Add Companies
 
-Use the **Companies** tab to add career URLs, or run the bulk import script:
+Use the **Companies** tab to add career URLs. A bulk import script is also available to pre-populate with popular EU tech companies:
 
 ```bash
 node bulk-add-companies.js
 ```
-
-This adds all 49 pre-configured EU target companies with platform detection (Greenhouse, Lever, custom).
 
 ### 4. Configure Search Profiles
 
@@ -231,11 +228,6 @@ SCORING_PROVIDER=ollama      # Use local model (free)
 ```
 
 No code changes needed to switch providers.
-
-## Target Companies
-
-49 EU-based companies across fintech, SaaS, e-commerce, and mobility:
-Adyen, Mollie, Stripe, Revolut, Wise, Klarna, Checkout.com, Bunq, N26, Trade Republic, Scalable Capital, Solarisbank, WeLab Bank, Intercom, Contentful, Miro, Notion, Aiven, Elastic, Dataiku, Typeform, Remote.com, Deel, Personio, Collibra, Celonis, Snyk, GitLab, Supabase, Vercel, Netlify, Clerk, Workato, Celonis (2nd), MessageBird, Sinch, TrueLayer, Railsbank, Nordigen, Cabify, Glovo, Wallapop, Free Now, Flix, Wefox, Getir, Flink, Gorillas, Tier.
 
 ## License
 
