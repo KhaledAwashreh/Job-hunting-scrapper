@@ -176,7 +176,27 @@ function getProviderForUseCase(useCase = 'scoring') {
   return process.env[envKey] || 'anthropic'; // Default to Anthropic
 }
 
+/**
+ * Get the default model ID for a given provider and speed tier
+ * @param {string} provider - 'anthropic', 'openai', 'ollama'
+ * @param {string} tier - 'main' or 'fast'
+ * @returns {string} Model ID
+ */
+function defaultModelFor(provider, tier) {
+  switch (provider.toLowerCase()) {
+    case 'anthropic':
+      return tier === 'fast' ? MODELS.CLAUDE_FAST : MODELS.CLAUDE_MAIN;
+    case 'openai':
+      return MODELS.OPENAI_MAIN;
+    case 'ollama':
+      return MODELS.OLLAMA_DEFAULT;
+    default:
+      throw new Error(`Unknown LLM provider: ${provider}`);
+  }
+}
+
 module.exports = {
   createClient,
-  getProviderForUseCase
+  getProviderForUseCase,
+  defaultModelFor
 };

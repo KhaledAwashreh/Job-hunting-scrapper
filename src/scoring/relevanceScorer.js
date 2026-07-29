@@ -1,5 +1,4 @@
-const { createClient } = require('../utils/llmFactory');
-const { MODELS } = require('../config');
+const { createClient, getProviderForUseCase, defaultModelFor } = require('../utils/llmFactory');
 
 /**
  * Extract key information from resume text for better matching
@@ -69,13 +68,14 @@ async function translateToEnglish(text, sourceLang) {
   if (!text || sourceLang === 'English') return text;
 
   try {
-    const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+    const provider = getProviderForUseCase('translation');
+    const client = createClient(provider);
     const response = await client.complete(
-      `Translate the following job posting from ${sourceLang} to English. 
-Keep technical terms, company names, and job titles intact. 
+      `Translate the following job posting from ${sourceLang} to English.
+Keep technical terms, company names, and job titles intact.
 Return ONLY the translated text, no explanations.\n\n${text}`,
       {
-        model: MODELS.CLAUDE_FAST, // Use fast model for translation
+        model: defaultModelFor(provider, 'fast'), // Use fast model for translation
         maxTokens: 4000
       }
     );
@@ -161,10 +161,11 @@ Required Skills: ${job.jobType || 'Not specified'}
 ${resumeSummaries}`;
 
   try {
-    const client = createClient('anthropic', { apiKey: process.env.ANTHROPIC_API_KEY });
+    const provider = getProviderForUseCase('scoring');
+    const client = createClient(provider);
     const response = await client.complete(prompt, {
-      model: MODELS.CLAUDE_MAIN,
-      maxTokens: 200
+      model: defaultModelFor(provider, 'main'),
+      maxTokens: 2048
     });
 
     const text = response.text;
@@ -197,4 +198,4 @@ ${resumeSummaries}`;
   }
 }
 
-module.exports = { scorePosition };
+module.exports = { scorePosition, extractResumeSummary };

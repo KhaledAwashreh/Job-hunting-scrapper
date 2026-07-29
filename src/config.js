@@ -3,8 +3,9 @@
  */
 
 const MODELS = {
-  CLAUDE_MAIN: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
-  CLAUDE_FAST: process.env.CLAUDE_MODEL_FAST || 'claude-3-haiku-20250305',
+  CLAUDE_MAIN: process.env.CLAUDE_MODEL || 'claude-opus-5',
+  CLAUDE_FAST: process.env.CLAUDE_MODEL_FAST || 'claude-haiku-4-5',
+  OPENAI_MAIN: process.env.OPENAI_MODEL || 'gpt-4o',
   OLLAMA_DEFAULT: process.env.OLLAMA_MODEL || 'mistral',
 };
 

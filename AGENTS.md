@@ -32,10 +32,10 @@ Do not introduce additional frameworks or dependencies without being asked.
 - Every file must be runnable as written
 
 ## After each module
-- Write and run a test script named test-<module>.js
-- Print clear PASS/FAIL output to console
+- Write tests under `test/<module>.test.js` using the built-in `node:test` runner
+- Run them with `npm test` (`node --test test/`)
 - Fix any failure before moving to the next module
-- Delete the test script after it passes
+- Keep the tests in the repo — do not delete them after they pass
 
 ## Code style
 - CommonJS (require/module.exports) — no ES modules
