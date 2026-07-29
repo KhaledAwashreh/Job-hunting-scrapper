@@ -274,15 +274,18 @@ function matchesProfile(jobFields, profile, searchParam = null, companyCountry =
     const jobCountry = (jobFields._country || '').trim().toLowerCase();
     const compCountry = (companyCountry || '').trim().toLowerCase();
 
-    // Step 1: Try job's country/location
-    const jobMatch = jobCountry && targetCountries.some(tc =>
-      jobCountry.includes(tc) || tc.includes(jobCountry)
-    );
-
-    if (jobMatch) {
-      // Job country matches — keep going
+    if (jobCountry) {
+      // Job has a usable location — it alone decides the match. A present
+      // but unrecognized location (e.g. "N/A") must not fall through to the
+      // company country; it is rejected here.
+      const jobMatch = targetCountries.some(tc =>
+        jobCountry.includes(tc) || tc.includes(jobCountry)
+      );
+      if (!jobMatch) {
+        return false;
+      }
     } else {
-      // Step 2: Fall back to company's home country
+      // Job location absent — fall back to company's home country.
       const compMatch = compCountry && targetCountries.some(tc =>
         compCountry.includes(tc) || tc.includes(compCountry)
       );
