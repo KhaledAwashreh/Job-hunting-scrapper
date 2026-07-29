@@ -367,6 +367,93 @@ if the change stays small. Otherwise the text assertions above are acceptable.
 
 ---
 
+---
+
+## Task 5: Teach `extractCountry` the cities that appear in job locations
+
+Added mid-execution after Task 2 measured its own impact against the live database. Not tied to
+an existing GitHub issue — file one if you want it tracked.
+
+### Why
+
+Task 2 correctly stopped the company-country fallback from firing on an explicit mismatch. But
+`extractCountry` (`src/agents/apiAgent.js:490-523`) maps country *names* only, so a posting whose
+location is just `"Amsterdam"` stays `"Amsterdam"` — present, non-matching, rejected. Measured
+against the 40 stored positions, the new rule rejects 35, and that set wrongly includes
+`Amsterdam` (Netherlands), `Barcelona` (Spain), and `Dublin` (Ireland).
+
+The old fallback was accidentally rescuing these, which is why the bug was survivable. Fixing
+the fallback without teaching the extractor about cities trades false positives for false
+negatives. This task closes that gap.
+
+### Required change
+
+Extend the `countryMap` object literal in `extractCountry` with city → country entries. Keep the
+existing structure and the existing `lower.includes(key)` matching — this is a data change, not a
+logic change. Do not alter `matchesProfile` (Task 2 owns it).
+
+Add at minimum, grouped and commented by country:
+
+- **Netherlands** — `amsterdam`, `rotterdam`, `eindhoven`, `utrecht`, `the hague`, `den haag`,
+  `delft`, `groningen`, `hilversum`
+- **Spain** — `barcelona`, `madrid`, `valencia`, `seville`, `sevilla`, `malaga`, `bilbao`,
+  `zaragoza`
+- **Ireland** — `dublin`, `cork`, `galway`, `limerick`
+- **Portugal** — `lisbon`, `lisboa`, `porto`, `braga`, `coimbra`
+
+Also add the non-EU hubs already present in the stored data, so they resolve to a real country
+and are rejected deliberately rather than by accident:
+
+- **United States** — `chicago`, `san francisco`, `seattle`, `new york`, `nyc`, `boston`,
+  `austin`, `denver`
+- **India** — `bengaluru`, `bangalore`, `hyderabad`, `pune`, `mumbai`, `chennai`
+- **Canada** — `toronto`, `vancouver`, `montreal`, `ottawa`
+- **United Kingdom** — `london`, `manchester`, `edinburgh`, `cambridge`, `bristol`
+- **Brazil** — `sao paulo`, `são paulo`, `sao jose dos campos`, `são josé dos campos`
+- **Germany** — `berlin`, `munich`, `münchen`, `hamburg`, `frankfurt`, `cologne`
+
+### Ordering hazard — read before implementing
+
+`extractCountry` returns on the **first** `lower.includes(key)` hit while iterating
+`Object.entries(countryMap)`, so insertion order is load-bearing. Two concrete collisions to
+handle:
+
+1. `"Hybrid (Madrid or Buenos Aires)"` is in the live data. It contains `madrid`. Whichever of
+   `madrid` / `buenos aires` is reached first wins. Put the **city entries after the existing
+   country-name entries** so an explicit country name in the string always beats a city.
+2. `cork` is a substring of `"Cork"` but also of words like `"corking"`; `porto` is a substring of
+   `"Oporto"`. These are acceptable for a job-location field, but do not add short city keys
+   (under 4 characters) — no `"ams"`, no `"bcn"`.
+
+Do not add a city whose name collides with a country name already in the map.
+
+### Tests — `test/api-agent.country.test.js`
+
+`extractCountry` is already exported from `src/agents/apiAgent.js:549`. Cover:
+
+1. `extractCountry('Amsterdam')` → `'Netherlands'`
+2. `extractCountry('Barcelona')` → `'Spain'`
+3. `extractCountry('Dublin')` → `'Ireland'`
+4. `extractCountry('Bengaluru')` → `'India'`
+5. `extractCountry('Chicago')` → `'United States'`
+6. `extractCountry('Amsterdam, North Holland, Netherlands')` → `'Netherlands'` (country name and
+   city agree)
+7. `extractCountry('Hybrid (Madrid or Buenos Aires)')` → `'Spain'` — pins the ordering decision
+8. `extractCountry('')` → `''` (unchanged behavior)
+9. `extractCountry('Atlantis')` → `'Atlantis'` (unrecognized input still returns raw text)
+
+Then add an integration test to the existing `test/job-field-extractor.country.test.js` proving
+the two tasks compose: a job whose `_country` is `extractCountry('Amsterdam')` and whose company
+is `Netherlands` now passes `matchesProfile`, while `extractCountry('Bengaluru')` does not.
+
+### Acceptance
+
+- Amsterdam, Barcelona, and Dublin postings pass the country filter again.
+- Bengaluru, Chicago, Singapore, Toronto, and São José dos Campos postings still do not.
+- All previously passing tests stay green.
+
+---
+
 ## Out of scope
 
 - Issue #6 (repo hygiene: `langchain4j/`, `path/to/`, `src/package.json`, `main.py`).
