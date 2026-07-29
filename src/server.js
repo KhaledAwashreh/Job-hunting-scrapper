@@ -27,7 +27,7 @@ const {
   getNextVersionForPositionProfile,
   deleteTailoredResume,
 } = require('./db/queries');
-const { parseResumes } = require('./utils/resumeParser');
+const { parseResumes, clearResumeCache } = require('./utils/resumeParser');
 const { tailorResume } = require('./utils/resumeTailor');
 const { runScraper, getRunStatus, setTimeWindow, getTimeWindow } = require('./agents/orchestrator');
 const logger = require('./utils/logger');
@@ -163,6 +163,15 @@ const validateProfileInput = (req, res, next) => {
   next();
 };
 
+// Re-parse resumes from disk and refresh the module-scope cache. Called at
+// startup and whenever the resume files on disk change (upload/delete), so
+// there is exactly one code path that populates loadedResumes.
+async function refreshLoadedResumes() {
+  clearResumeCache();
+  loadedResumes = await parseResumes();
+  return loadedResumes;
+}
+
 // Initialize database and resumes on startup
 async function startup() {
   try {
@@ -172,7 +181,7 @@ async function startup() {
     console.log('Database initialized');
 
     console.log('Loading resumes...');
-    loadedResumes = await parseResumes();
+    await refreshLoadedResumes();
     console.log(`Loaded ${loadedResumes.length} resume(s)`);
   } catch (error) {
     console.error('Startup error:', error);
@@ -343,15 +352,18 @@ app.get('/api/profiles', (req, res) => {
 });
 
 // ===== Resume Upload API =====
-app.post('/api/resumes/upload', resumeUpload.single('resume'), (req, res) => {
+app.post('/api/resumes/upload', resumeUpload.single('resume'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Clear resume cache so the new file is picked up immediately
-    const { clearResumeCache } = require('./utils/resumeParser');
-    clearResumeCache();
+    // Refresh the resume cache so the new file is picked up immediately
+    try {
+      await refreshLoadedResumes();
+    } catch (refreshError) {
+      console.error('Failed to refresh resume cache after upload:', refreshError);
+    }
 
     res.json({
       success: true,
@@ -365,34 +377,25 @@ app.post('/api/resumes/upload', resumeUpload.single('resume'), (req, res) => {
   }
 });
 
-app.get('/api/resumes', (req, res) => {
-  try {
-    const resumes = require('./utils/resumeParser').parseResumes();
-    resumes.then(files => {
-      res.json(files.map(r => ({
-        filename: r.filename,
-        textLength: r.text.length,
-        isTruncated: r.isTruncated
-      })));
-    }).catch(err => {
-      res.status(500).json({ error: err.message });
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/resumes/:filename', (req, res) => {
+app.delete('/api/resumes/:filename', async (req, res) => {
   try {
     const fs = require('fs');
     const filename = req.params.filename;
     const filepath = path.join(__dirname, '../data/resumes', filename);
-    
+
     if (!fs.existsSync(filepath)) {
       return res.status(404).json({ error: 'File not found' });
     }
-    
+
     fs.unlinkSync(filepath);
+
+    // Refresh the resume cache so the removed file drops out immediately
+    try {
+      await refreshLoadedResumes();
+    } catch (refreshError) {
+      console.error('Failed to refresh resume cache after delete:', refreshError);
+    }
+
     res.json({ success: true, deleted: filename });
   } catch (error) {
     res.status(500).json({ error: error.message });
