@@ -53,9 +53,21 @@ to:
 "test": "node --test test/"
 ```
 
-Delete the two dead test scripts `src/test-db.js` and `src/test-hasher.js` — both reference a
-`better-sqlite3`-era API (`createSchema`, `queries.insertCompany.run`) that this project no longer
-has, and neither is reachable from any npm script.
+Delete these four dead test scripts:
+
+- `src/test-db.js` and `src/test-hasher.js` — both reference a `better-sqlite3`-era API
+  (`createSchema`, `queries.insertCompany.run`) that this project no longer has, and neither is
+  reachable from any npm script.
+- `test-orchestrator.js` — matched by the current `test-*.js` glob and crashes immediately with
+  `Cannot find module './agents/orchestrator'` (the path is missing the `src/` prefix). This is
+  why `npm test` currently fails.
+- `test-orchestrator2.js` — also matched by the glob. Its paths are correct, which is worse: it
+  calls `runScraper()`, so a green `npm test` would launch a **live scrape** against every active
+  company, spending Firecrawl credits and hitting third-party APIs. It must not survive into a
+  working test suite.
+
+The baseline `npm test` on this branch fails before any task work begins; fixing it is part of
+this task, not a pre-existing condition to preserve.
 
 Update `AGENTS.md`: replace the "After each module" section's delete-after-passing rule with the
 kept-tests convention. Keep the rest of `AGENTS.md` unchanged.
