@@ -7,16 +7,22 @@ const path = require('node:path');
 // `initializeDatabase()` against the repo-root jobs.db. There is no jobs.db in
 // this worktree (it is gitignored and was never created), and importing the
 // module — even behind a `require.main === module` guard on `app.listen` —
-// would still execute `startup()` and create one. That is a hard stop per
-// this task's constraints ("do NOT create a jobs.db to make tests pass"), so
-// this test targets the level the defect actually lives at: the source file
-// text, plus the resumeParser cache behavior the handlers depend on.
+// would still execute `startup()` and create one. Separately, every route
+// other than /health is gated by a `dbInitialized` middleware (src/server.js
+// ~104-110) that returns 503 until `startup()` finishes, so even a guarded
+// listener would only ever exercise the 503 branch in a request driven by
+// supertest, not real handler behavior. Both are independent reasons this
+// file can't drive the app over HTTP; see task-4-report.md for the full
+// writeup. This file targets the level the defect actually lives at: the
+// source file text, confirming the single registration and the wiring from
+// both mutating handlers into the resume cache. The actual cache *behavior*
+// (does refresh really pick up new/removed files, does the summary shape
+// match) is covered by real, file-driven tests in
+// test/resume-cache.test.js against src/utils/resumeCache.js directly.
 const serverSource = fs.readFileSync(
   path.join(__dirname, '../src/server.js'),
   'utf-8'
 );
-
-const { parseResumes, clearResumeCache } = require('../src/utils/resumeParser');
 
 describe('server.js — GET /api/resumes duplicate registration', () => {
   test('registers GET /api/resumes exactly once', () => {
@@ -24,34 +30,32 @@ describe('server.js — GET /api/resumes duplicate registration', () => {
     assert.equal(matches.length, 1);
   });
 
-  test('the surviving handler builds the {resumes, summary} response shape', () => {
+  test('the surviving handler serves resumeCache.getSummary()', () => {
     const handlerIndex = serverSource.indexOf("app.get('/api/resumes'");
     assert.notEqual(handlerIndex, -1);
-    const handlerSlice = serverSource.slice(handlerIndex, handlerIndex + 400);
-    assert.match(handlerSlice, /resumes:\s*loadedResumes/);
-    assert.match(handlerSlice, /summary:\s*\{/);
-    assert.match(handlerSlice, /total:\s*loadedResumes\.length/);
+    const handlerSlice = serverSource.slice(handlerIndex, handlerIndex + 200);
+    assert.match(handlerSlice, /resumeCache\.getSummary\(\)/);
   });
 });
 
 describe('server.js — upload and delete handlers refresh the resume cache', () => {
-  test('POST /api/resumes/upload handler references refreshLoadedResumes', () => {
+  test('POST /api/resumes/upload handler calls resumeCache.refresh()', () => {
     const handlerIndex = serverSource.indexOf("app.post('/api/resumes/upload'");
     assert.notEqual(handlerIndex, -1);
     const nextRouteIndex = serverSource.indexOf("app.", handlerIndex + 1);
     const handlerSlice = serverSource.slice(handlerIndex, nextRouteIndex);
-    assert.match(handlerSlice, /refreshLoadedResumes/);
+    assert.match(handlerSlice, /resumeCache\.refresh\(\)/);
   });
 
-  test("DELETE /api/resumes/:filename handler references refreshLoadedResumes", () => {
+  test('DELETE /api/resumes/:filename handler calls resumeCache.refresh()', () => {
     const handlerIndex = serverSource.indexOf("app.delete('/api/resumes/:filename'");
     assert.notEqual(handlerIndex, -1);
     const nextRouteIndex = serverSource.indexOf("app.", handlerIndex + 1);
     const handlerSlice = serverSource.slice(handlerIndex, nextRouteIndex);
-    assert.match(handlerSlice, /refreshLoadedResumes/);
+    assert.match(handlerSlice, /resumeCache\.refresh\(\)/);
   });
 
-  test('handlers are async (so they can await refreshLoadedResumes)', () => {
+  test('handlers are async (so they can await resumeCache.refresh())', () => {
     const uploadIndex = serverSource.indexOf("app.post('/api/resumes/upload'");
     const uploadLine = serverSource.slice(uploadIndex, uploadIndex + 200);
     assert.match(uploadLine, /async \(req, res\)/);
@@ -61,33 +65,35 @@ describe('server.js — upload and delete handlers refresh the resume cache', ()
     assert.match(deleteLine, /async \(req, res\)/);
   });
 
-  test('resumeParser is required exactly once, at module scope (not inline in handlers)', () => {
-    // The brief requires the inline `require('./utils/resumeParser')` calls
-    // that used to sit inside the upload/GET handler bodies to move to the
-    // single module-scope import at the top of the file.
-    const requireMatches = [...serverSource.matchAll(/require\('\.\/utils\/resumeParser'\)/g)];
-    assert.equal(requireMatches.length, 1);
+  test('the delete handler refreshes the cache after fs.unlinkSync, before responding', () => {
+    const handlerIndex = serverSource.indexOf("app.delete('/api/resumes/:filename'");
+    const nextRouteIndex = serverSource.indexOf("app.", handlerIndex + 1);
+    const handlerSlice = serverSource.slice(handlerIndex, nextRouteIndex);
 
-    const moduleScopeImportIndex = serverSource.indexOf("const { parseResumes, clearResumeCache } = require('./utils/resumeParser')");
-    assert.notEqual(moduleScopeImportIndex, -1);
-    assert.equal(requireMatches[0].index, moduleScopeImportIndex + "const { parseResumes, clearResumeCache } = ".length);
+    const unlinkIndex = handlerSlice.indexOf('fs.unlinkSync');
+    const refreshIndex = handlerSlice.indexOf('resumeCache.refresh()');
+    const responseIndex = handlerSlice.indexOf('res.json({ success: true, deleted: filename })');
+
+    assert.ok(unlinkIndex !== -1 && refreshIndex !== -1 && responseIndex !== -1);
+    assert.ok(unlinkIndex < refreshIndex, 'refresh must happen after unlink');
+    assert.ok(refreshIndex < responseIndex, 'refresh must happen before the response is sent');
   });
 });
 
-describe('resumeParser — cache repopulates after clearResumeCache (what refreshLoadedResumes relies on)', () => {
-  test('parseResumes returns equivalent results before and after a cache clear', async () => {
-    const before = await parseResumes();
-    clearResumeCache();
-    const after = await parseResumes();
+describe('server.js — resume cache logic lives in its own module', () => {
+  test('src/server.js has no leftover direct references to resumeParser (moved to resumeCache)', () => {
+    assert.doesNotMatch(serverSource, /require\('\.\/utils\/resumeParser'\)/);
+  });
 
-    assert.deepEqual(
-      after.map(r => r.filename),
-      before.map(r => r.filename)
-    );
-    assert.deepEqual(
-      after.map(r => r.text),
-      before.map(r => r.text)
-    );
-    assert.equal(after.length, before.length);
+  test('resumeCache is required exactly once, at module scope', () => {
+    const requireMatches = [...serverSource.matchAll(/require\('\.\/utils\/resumeCache'\)/g)];
+    assert.equal(requireMatches.length, 1);
+
+    const moduleScopeImportIndex = serverSource.indexOf("const resumeCache = require('./utils/resumeCache')");
+    assert.notEqual(moduleScopeImportIndex, -1);
+  });
+
+  test('no leftover module-scope loadedResumes variable (state now lives in resumeCache)', () => {
+    assert.doesNotMatch(serverSource, /let loadedResumes/);
   });
 });

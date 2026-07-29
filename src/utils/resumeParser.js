@@ -14,15 +14,17 @@ function clearResumeCache() {
   resumeCache.clear();
 }
 
-async function parseResumes() {
+// `dir` defaults to the app's real resumes directory but can be overridden —
+// e.g. by tests pointing this at a temp directory instead of data/resumes/.
+async function parseResumes(dir = resumesDir) {
   try {
     try {
-      await fs.access(resumesDir);
+      await fs.access(dir);
     } catch {
       return [];
     }
 
-    const files = await fs.readdir(resumesDir);
+    const files = await fs.readdir(dir);
     const filteredFiles = files
       .filter(f => f.endsWith('.pdf') || f.endsWith('.docx') || f.endsWith('.txt'))
       .sort();
@@ -31,7 +33,7 @@ async function parseResumes() {
     let index = 1;
 
     for (const filename of filteredFiles) {
-      const filepath = path.join(resumesDir, filename);
+      const filepath = path.join(dir, filename);
 
       try {
         // Check cache first: if file hasn't changed, use cached text

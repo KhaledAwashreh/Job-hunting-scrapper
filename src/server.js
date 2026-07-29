@@ -27,7 +27,7 @@ const {
   getNextVersionForPositionProfile,
   deleteTailoredResume,
 } = require('./db/queries');
-const { parseResumes, clearResumeCache } = require('./utils/resumeParser');
+const resumeCache = require('./utils/resumeCache');
 const { tailorResume } = require('./utils/resumeTailor');
 const { runScraper, getRunStatus, setTimeWindow, getTimeWindow } = require('./agents/orchestrator');
 const logger = require('./utils/logger');
@@ -109,9 +109,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Track resumes for API access
-let loadedResumes = [];
-
 // Input validation middleware
 const validateCompanyInput = (req, res, next) => {
   const { name, country, career_url, platform } = req.body;
@@ -163,15 +160,6 @@ const validateProfileInput = (req, res, next) => {
   next();
 };
 
-// Re-parse resumes from disk and refresh the module-scope cache. Called at
-// startup and whenever the resume files on disk change (upload/delete), so
-// there is exactly one code path that populates loadedResumes.
-async function refreshLoadedResumes() {
-  clearResumeCache();
-  loadedResumes = await parseResumes();
-  return loadedResumes;
-}
-
 // Initialize database and resumes on startup
 async function startup() {
   try {
@@ -181,8 +169,8 @@ async function startup() {
     console.log('Database initialized');
 
     console.log('Loading resumes...');
-    await refreshLoadedResumes();
-    console.log(`Loaded ${loadedResumes.length} resume(s)`);
+    const resumes = await resumeCache.refresh();
+    console.log(`Loaded ${resumes.length} resume(s)`);
   } catch (error) {
     console.error('Startup error:', error);
     dbInitialized = false;
@@ -360,7 +348,7 @@ app.post('/api/resumes/upload', resumeUpload.single('resume'), async (req, res) 
 
     // Refresh the resume cache so the new file is picked up immediately
     try {
-      await refreshLoadedResumes();
+      await resumeCache.refresh();
     } catch (refreshError) {
       console.error('Failed to refresh resume cache after upload:', refreshError);
     }
@@ -391,7 +379,7 @@ app.delete('/api/resumes/:filename', async (req, res) => {
 
     // Refresh the resume cache so the removed file drops out immediately
     try {
-      await refreshLoadedResumes();
+      await resumeCache.refresh();
     } catch (refreshError) {
       console.error('Failed to refresh resume cache after delete:', refreshError);
     }
@@ -497,7 +485,7 @@ app.post('/api/positions/:positionId/tailor', async (req, res) => {
       }
       // Find profile matching the resume index
       const profiles = getAllProfiles();
-      const targetResume = loadedResumes.find(r => r.index === position.matched_resume);
+      const targetResume = resumeCache.get().find(r => r.index === position.matched_resume);
       if (!targetResume) {
         return res.status(404).json({ error: 'Matched resume not found in loaded resumes' });
       }
@@ -515,7 +503,7 @@ app.post('/api/positions/:positionId/tailor', async (req, res) => {
     }
 
     // 4. Get base resume text
-    const targetResume = loadedResumes.find(r => r.filename === profile.resume_file);
+    const targetResume = resumeCache.get().find(r => r.filename === profile.resume_file);
     if (!targetResume) {
       return res.status(404).json({ error: 'Base resume file not found for this profile' });
     }
@@ -761,15 +749,7 @@ app.post('/api/scrape/time-window', (req, res) => {
 // ===== Resumes API =====
 app.get('/api/resumes', (req, res) => {
   try {
-    const truncatedCount = loadedResumes.filter(r => r.isTruncated).length;
-    return res.json({
-      resumes: loadedResumes,
-      summary: {
-        total: loadedResumes.length,
-        truncated: truncatedCount,
-        warning: truncatedCount > 0 ? `${truncatedCount} resume(s) truncated` : null
-      }
-    });
+    return res.json(resumeCache.getSummary());
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
@@ -783,7 +763,7 @@ app.get('/api/health', (req, res) => {
     return res.json({
       status: 'ok',
       db_initialized: dbInitialized,
-      resumes_loaded: loadedResumes.length,
+      resumes_loaded: resumeCache.get().length,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
