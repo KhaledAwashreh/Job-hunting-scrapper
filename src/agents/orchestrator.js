@@ -73,30 +73,61 @@ function stopScraperGracefully() {
 /**
  * Ensure profiles exist. If the DB has no profiles, create them from
  * search-params.csv so filtering works correctly.
+ *
+ * Rows sharing the same `title` (trimmed, case-insensitive) are grouped into a
+ * single profile so repeating a title once per target country in the CSV does
+ * not create one duplicate profile per row.
+ *
+ * `getAllProfiles`/`addProfile` may be overridden via the final options
+ * argument (defaulting to the real `../db/queries` implementations) so this
+ * function can be unit tested without touching the real database.
  */
-function ensureProfilesFromSearchParams(searchParams, resumes) {
-  const existing = getAllProfiles();
+function ensureProfilesFromSearchParams(
+  searchParams,
+  resumes,
+  { getAllProfiles: getAllProfilesFn = getAllProfiles, addProfile: addProfileFn = addProfile } = {}
+) {
+  const existing = getAllProfilesFn();
   if (existing.length > 0) return existing;
 
   console.log('  → No profiles found in DB. Creating from search-params.csv...');
 
-  const created = [];
-  for (let i = 0; i < searchParams.length; i++) {
-    const sp = searchParams[i];
-    // Use the search-param title as job_type
-    const jobTypes = [sp.title];
-    // Pick a resume file name if available
-    const resumeFile = resumes.length > 0 ? resumes[0].filename : '';
-    const profileName = `Profile ${i + 1}: ${sp.title}`;
+  // Group rows by title, trimmed and compared case-insensitively, preserving
+  // the order in which each distinct title is first encountered.
+  const groups = [];
+  const groupIndexByKey = new Map();
+  for (const sp of searchParams) {
+    const key = sp.title.trim().toLowerCase();
+    let groupIndex = groupIndexByKey.get(key);
+    if (groupIndex === undefined) {
+      groupIndex = groups.length;
+      groupIndexByKey.set(key, groupIndex);
+      groups.push([]);
+    }
+    groups[groupIndex].push(sp);
+  }
 
-    const id = addProfile(
+  // Pick a resume file name if available
+  const resumeFile = resumes.length > 0 ? resumes[0].filename : '';
+
+  const created = [];
+  for (const group of groups) {
+    const first = group[0];
+    // Use the original (untrimmed-case) title from the first row as-is
+    const profileName = first.title;
+    const jobTypes = [profileName];
+    const firstNonNullSeniority = group.find(sp => sp.seniority);
+    const seniority = firstNonNullSeniority ? firstNonNullSeniority.seniority : null;
+    const isRemote = group.some(sp => sp.remote === true);
+
+    const id = addProfileFn(
       profileName,
       resumeFile,
       jobTypes,
       null, // secondaryCategory
-      sp.seniority || null,
+      seniority,
       [],
-      sp.remote ? ['Remote'] : []
+      isRemote ? ['Remote'] : []
     );
     console.log(`  → Created profile: "${profileName}" (id=${id})`);
     created.push({
@@ -105,9 +136,9 @@ function ensureProfilesFromSearchParams(searchParams, resumes) {
       resume_file: resumeFile,
       job_types: JSON.stringify(jobTypes),
       secondary_category: null,
-      seniority_level: sp.seniority || null,
+      seniority_level: seniority,
       years_of_experience: '[]',
-      work_location_preference: sp.remote ? '["Remote"]' : '[]',
+      work_location_preference: isRemote ? '["Remote"]' : '[]',
       parsed_job_types: jobTypes
     });
   }
@@ -459,5 +490,6 @@ module.exports = {
   runScraper,
   getRunStatus,
   setTimeWindow,
-  getTimeWindow
+  getTimeWindow,
+  ensureProfilesFromSearchParams
 };
