@@ -510,6 +510,52 @@ function extractCountry(locationText) {
     'slovakia': 'Slovakia', 'lithuania': 'Lithuania', 'latvia': 'Latvia',
     'estonia': 'Estonia', 'bulgaria': 'Bulgaria',
     'united arab emirates': 'United Arab Emirates',
+
+    // City entries below MUST stay after every country-name entry above, so
+    // an explicit country name in the text always wins over an incidentally
+    // matching city (e.g. "Hybrid (Madrid or Buenos Aires)" resolves via the
+    // Spain city group below, but "Amsterdam, ... Netherlands" resolves via
+    // the "netherlands" country entry before it ever reaches the city map).
+
+    // Netherlands
+    'amsterdam': 'Netherlands', 'rotterdam': 'Netherlands', 'eindhoven': 'Netherlands',
+    'utrecht': 'Netherlands', 'the hague': 'Netherlands', 'den haag': 'Netherlands',
+    'delft': 'Netherlands', 'groningen': 'Netherlands', 'hilversum': 'Netherlands',
+
+    // Spain
+    'barcelona': 'Spain', 'madrid': 'Spain', 'valencia': 'Spain', 'seville': 'Spain',
+    'sevilla': 'Spain', 'malaga': 'Spain', 'bilbao': 'Spain', 'zaragoza': 'Spain',
+
+    // Ireland
+    'dublin': 'Ireland', 'cork': 'Ireland', 'galway': 'Ireland', 'limerick': 'Ireland',
+
+    // Portugal
+    'lisbon': 'Portugal', 'lisboa': 'Portugal', 'porto': 'Portugal',
+    'braga': 'Portugal', 'coimbra': 'Portugal',
+
+    // United States (non-EU hub, resolved deliberately rather than by accident)
+    'chicago': 'United States', 'san francisco': 'United States', 'seattle': 'United States',
+    'new york': 'United States', 'boston': 'United States', 'austin': 'United States',
+    'denver': 'United States',
+
+    // India (non-EU hub)
+    'bengaluru': 'India', 'bangalore': 'India', 'hyderabad': 'India',
+    'pune': 'India', 'mumbai': 'India', 'chennai': 'India',
+
+    // Canada (non-EU hub)
+    'toronto': 'Canada', 'vancouver': 'Canada', 'montreal': 'Canada', 'ottawa': 'Canada',
+
+    // United Kingdom (non-EU hub)
+    'london': 'United Kingdom', 'manchester': 'United Kingdom', 'edinburgh': 'United Kingdom',
+    'cambridge': 'United Kingdom', 'bristol': 'United Kingdom',
+
+    // Brazil (non-EU hub)
+    'sao paulo': 'Brazil', 'são paulo': 'Brazil',
+    'sao jose dos campos': 'Brazil', 'são josé dos campos': 'Brazil',
+
+    // Germany
+    'berlin': 'Germany', 'munich': 'Germany', 'münchen': 'Germany',
+    'hamburg': 'Germany', 'frankfurt': 'Germany', 'cologne': 'Germany',
   };
 
   const lower = locationText.toLowerCase();

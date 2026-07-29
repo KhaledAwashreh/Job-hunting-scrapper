@@ -2,6 +2,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { matchesProfile } = require('../src/utils/jobFieldExtractor');
+const { extractCountry } = require('../src/agents/apiAgent');
 
 const PROFILE = { job_types: ['Backend Engineer'] };
 const SEARCH_PARAM = { country: 'Netherlands', remote: false };
@@ -103,5 +104,27 @@ describe('matchesProfile — country branch', () => {
       'Netherlands'
     );
     assert.equal(result, true);
+  });
+
+  // Integration: Task 2's stricter matching + Task 5's city-aware extractCountry
+  // composing correctly.
+  test('extractCountry("Amsterdam") feeding matchesProfile with matching company → accept', () => {
+    const result = matchesProfile(
+      jobFields(extractCountry('Amsterdam')),
+      PROFILE,
+      SEARCH_PARAM,
+      'Netherlands'
+    );
+    assert.equal(result, true);
+  });
+
+  test('extractCountry("Bengaluru") feeding matchesProfile with non-matching company → reject', () => {
+    const result = matchesProfile(
+      jobFields(extractCountry('Bengaluru')),
+      PROFILE,
+      SEARCH_PARAM,
+      'Netherlands'
+    );
+    assert.equal(result, false);
   });
 });
