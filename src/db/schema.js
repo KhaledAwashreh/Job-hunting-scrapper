@@ -164,6 +164,14 @@ async function initializeDatabase() {
     db = new SQL.Database();
   }
 
+  // #30 — schema.js declares `ON DELETE CASCADE` on positions.company_id,
+  // position_profiles.position_id/profile_id, and
+  // tailored_resumes.position_id/profile_id, but SQLite (and therefore
+  // sql.js) has foreign-key enforcement OFF by default per connection — the
+  // declared cascades never actually fire without this. Must be set on every
+  // new connection (it is not persisted in the database file itself).
+  db.run('PRAGMA foreign_keys = ON');
+
   db.run(`
     CREATE TABLE IF NOT EXISTS companies (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -324,8 +332,18 @@ function getDatabase() {
 
 function writeToDisk() {
   if (database) {
+    // sql.js's Database.export() closes the underlying sqlite3 connection and
+    // reopens a fresh one internally (to serialize its bytes) before
+    // returning — this same `database` object keeps working afterward, but
+    // the reopen resets every connection-level PRAGMA, including
+    // `foreign_keys`, back to SQLite's off-by-default. Since saveDatabase()
+    // (and therefore writeToDisk()) runs after nearly every write via
+    // runWrite(), foreign_keys would silently go back to OFF moments after
+    // initializeDatabase() turned it ON — re-assert it every time so #30's
+    // cascade deletes keep firing on the very next query.
     const data = database.export();
     fs.writeFileSync(dbPath, Buffer.from(data));
+    database.run('PRAGMA foreign_keys = ON');
   }
   dirty = false;
 }
