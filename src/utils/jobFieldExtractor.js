@@ -175,7 +175,9 @@ function extractYearsExperience(title = '', description = '') {
   const ranges = [];
 
   // Look for explicit year ranges in the text
-  const yrPattern = /(\d+)[\s-]*\+?\s*years?\s*(?:of\s*)?(?:experience|exp)/gi;
+  // Note: "exp\b" (not bare "exp") so "expertise"/"experienced" etc. don't
+  // falsely match the first three letters of "exp" (#53).
+  const yrPattern = /(\d+)[\s-]*\+?\s*years?\s*(?:of\s*)?(?:experience|exp\b)/gi;
   let match;
   while ((match = yrPattern.exec(fullText)) !== null) {
     const yrs = parseInt(match[1], 10);
@@ -207,6 +209,45 @@ function extractYearsExperience(title = '', description = '') {
   return ranges.length > 0 ? [...new Set(ranges)] : ['Unspecified'];
 }
 
+// Common negation words/phrases (#51). Kept deliberately small — a full NLP
+// negation detector is out of scope for this MVP; this covers the common
+// phrasings reported in the issue ("not a remote position", "remote work is
+// not available") and a few obvious variants.
+const NEGATION_WORDS = /\b(not|no|isn't|isnt|aren't|arent|won't|wont|without|unavailable|never)\b/i;
+
+/**
+ * Returns true if every occurrence of `keywordRegex` in `text` has a
+ * negation word within `windowWords` words before or after it — i.e. the
+ * keyword is only ever mentioned in a negated context (e.g. "not a remote
+ * position", "remote work is not available").
+ */
+function isKeywordAlwaysNegated(text, keywordRegex, windowWords = 5) {
+  const flags = keywordRegex.flags.includes('g') ? keywordRegex.flags : `${keywordRegex.flags}g`;
+  const regex = new RegExp(keywordRegex.source, flags);
+  let match;
+  let sawMatch = false;
+  let allNegated = true;
+
+  while ((match = regex.exec(text)) !== null) {
+    sawMatch = true;
+    const start = match.index;
+    const end = match.index + match[0].length;
+
+    const beforeWords = text.slice(0, start).split(/\s+/).filter(Boolean).slice(-windowWords).join(' ');
+    const afterWords = text.slice(end).split(/\s+/).filter(Boolean).slice(0, windowWords).join(' ');
+
+    const negated = NEGATION_WORDS.test(beforeWords) || NEGATION_WORDS.test(afterWords);
+    if (!negated) {
+      allNegated = false;
+    }
+
+    // Avoid infinite loop on zero-length matches
+    if (match[0].length === 0) regex.lastIndex++;
+  }
+
+  return sawMatch && allNegated;
+}
+
 /**
  * Extract location type(s) from a job posting (remote / on-site / hybrid)
  */
@@ -214,7 +255,8 @@ function extractLocationType(title = '', description = '') {
   const fullText = `${title} ${description}`.toLowerCase();
   const found = [];
 
-  if (/\bremote\b/i.test(fullText) || /\bwork from home\b/i.test(fullText) || /\bwfh\b/i.test(fullText) || /\bdistributed\b/i.test(fullText)) {
+  const remoteRegex = /\bremote\b|\bwork from home\b|\bwfh\b|\bdistributed\b/i;
+  if (remoteRegex.test(fullText) && !isKeywordAlwaysNegated(fullText, remoteRegex)) {
     found.push('Remote');
   }
   if (/\bon[\s-]site\b/i.test(fullText) || /\bonsite\b/i.test(fullText) || /\bin[\s-]office\b/i.test(fullText)) {
