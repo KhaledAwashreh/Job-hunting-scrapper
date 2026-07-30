@@ -42,17 +42,21 @@ function detectGreenhouseSlug(url) {
  */
 function detectLeverSlug(url) {
   const u = new URL(url);
-  // jobs.lever.co/{slug}
-  const m1 = u.pathname.match(/^\/([^/]+)/);
-  if (m1 && (u.hostname.includes('jobs.lever') || u.hostname.includes('lever.co'))) {
-    return m1[1];
-  }
-  // api.lever.co/v0/postings/{slug}
-  const m2 = u.pathname.match(/\/postings\/([^/?]+)/);
-  if (m2) return m2[1];
+  // api.lever.co/v0/postings/{slug} — most specific pattern, checked first so
+  // it isn't shadowed by the generic first-path-segment match below (which
+  // would otherwise grab "v0" off /v0/postings/{slug}).
+  const m1 = u.pathname.match(/\/postings\/([^/?]+)/);
+  if (m1) return m1[1];
   // {slug}.jobs.lever.co
-  const m3 = u.hostname.match(/^(.+)\.jobs\.lever\.co$/);
-  if (m3) return m3[1];
+  const m2 = u.hostname.match(/^(.+)\.jobs\.lever\.co$/);
+  if (m2) return m2[1];
+  // jobs.lever.co/{slug} — generic first-segment match. Deliberately scoped to
+  // hostnames containing "jobs.lever" (not the broader "lever.co") so it never
+  // fires for api.lever.co.
+  const m3 = u.pathname.match(/^\/([^/]+)/);
+  if (m3 && u.hostname.includes('jobs.lever')) {
+    return m3[1];
+  }
   return null;
 }
 
@@ -653,6 +657,8 @@ module.exports = {
   extractQualifications,
   extractCountry,
   detectPlatformAndSlug,
+  detectLeverSlug,
+  detectGreenhouseSlug,
   parseRSSJobs,
   PLATFORM_SCRAPERS,
   // Exported so tests can assert that every key is reachable. The original bug
