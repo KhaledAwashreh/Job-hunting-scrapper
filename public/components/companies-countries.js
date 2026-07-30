@@ -9,6 +9,26 @@
  * and that fallback omitted Ireland and Portugal, so neither could be selected.
  */
 
+// Escapes a value for safe interpolation into innerHTML. Scraped company
+// names etc. are untrusted third-party strings (see issue #9) — every field
+// pulled from the API must go through this before it touches innerHTML.
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Only allow http(s) links through to an href attribute. Rejects javascript:
+// and other schemes that would execute on click (issue #9).
+function safeHref(value) {
+  const str = String(value == null ? '' : value).trim();
+  if (/^https?:\/\//i.test(str)) return escapeHtml(str);
+  return '#';
+}
+
 const CompaniesCountries = {
   countries: [],
   companies: [],
@@ -169,10 +189,10 @@ const CompaniesCountries = {
 
       html += `
         <tr>
-          <td>${company.name}</td>
-          <td>${company.country || '—'}</td>
-          <td>${company.platform || '—'}</td>
-          <td class="link-cell"><a href="${company.career_url}" target="_blank">Visit</a></td>
+          <td>${escapeHtml(company.name)}</td>
+          <td>${escapeHtml(company.country) || '—'}</td>
+          <td>${escapeHtml(company.platform) || '—'}</td>
+          <td class="link-cell"><a href="${safeHref(company.career_url)}" target="_blank">Visit</a></td>
           <td>${posCount}</td>
           <td>
             <button class="btn-sm-gap" onclick="CompaniesCountries.editCompany(${company.id})">Edit</button>

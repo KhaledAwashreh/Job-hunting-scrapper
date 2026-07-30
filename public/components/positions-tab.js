@@ -3,6 +3,26 @@
  * Handles dynamic grouping, profile matching display, and job field filtering
  */
 
+// Escapes a value for safe interpolation into innerHTML. Scraped job titles,
+// company names etc. are untrusted third-party strings (see issue #9) — every
+// field pulled from the API must go through this before it touches innerHTML.
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Only allow http(s) links through to an href attribute. Rejects javascript:
+// and other schemes that would execute on click (issue #9).
+function safeHref(value) {
+  const str = String(value == null ? '' : value).trim();
+  if (/^https?:\/\//i.test(str)) return escapeHtml(str);
+  return '#';
+}
+
 const PositionsTab = {
   positions: [],
   filterJobType: null,
@@ -109,14 +129,14 @@ const PositionsTab = {
        html += `
         <tr data-testid="position-row" data-position-id="${pos.id}">
           <td><span class="badge ${scoreClass}" data-testid="position-score">${pos.match_score}</span></td>
-          <td data-testid="position-country">${pos.country || '—'}</td>
-          <td data-testid="position-company">${pos.company_name || '—'}</td>
-          <td data-testid="position-title">${pos.title}</td>
-          <td>${pos.job_type || '—'}</td>
-          <td>${locationTypes.join(', ') || '—'}</td>
-          <td>${levels.join(', ') || '—'}</td>
-          <td class="link-cell"><a href="${pos.link}" target="_blank" data-testid="position-link">View</a></td>
-          <td><span class="badge ${statusBadgeClass}">${pos.status}</span></td>
+          <td data-testid="position-country">${escapeHtml(pos.country) || '—'}</td>
+          <td data-testid="position-company">${escapeHtml(pos.company_name) || '—'}</td>
+          <td data-testid="position-title">${escapeHtml(pos.title)}</td>
+          <td>${escapeHtml(pos.job_type) || '—'}</td>
+          <td>${escapeHtml(locationTypes.join(', ')) || '—'}</td>
+          <td>${escapeHtml(levels.join(', ')) || '—'}</td>
+          <td class="link-cell"><a href="${safeHref(pos.link)}" target="_blank" data-testid="position-link">View</a></td>
+          <td><span class="badge ${statusBadgeClass}">${escapeHtml(pos.status)}</span></td>
           <td class="actions-cell">
             <button class="btn-change" onclick="PositionsTab.updateStatus(${pos.id}, '${pos.status}')">Change</button>
             <button class="btn-tailor" onclick="PositionsTab.tailorResume(${pos.id})">Tailor Resume</button>
@@ -150,11 +170,11 @@ const PositionsTab = {
             <div data-testid="position-row" data-position-id="${pos.id}" class="position-group-row" style="margin-left: ${level * 20}px;">
               <div class="position-line">
                 <span class="badge ${scoreClass}" data-testid="position-score">${pos.match_score}</span>
-                <strong data-testid="position-title">${pos.title}</strong>
-                <span data-testid="position-company" class="text-faint">${pos.company_name}</span>
-                <span data-testid="position-country" class="text-sm-muted">${pos.country}</span>
-                <a href="${pos.link}" target="_blank" data-testid="position-link" class="text-sm">View</a>
-                <span class="badge ${statusBadgeClass} push-right">${pos.status}</span>
+                <strong data-testid="position-title">${escapeHtml(pos.title)}</strong>
+                <span data-testid="position-company" class="text-faint">${escapeHtml(pos.company_name)}</span>
+                <span data-testid="position-country" class="text-sm-muted">${escapeHtml(pos.country)}</span>
+                <a href="${safeHref(pos.link)}" target="_blank" data-testid="position-link" class="text-sm">View</a>
+                <span class="badge ${statusBadgeClass} push-right">${escapeHtml(pos.status)}</span>
                 <button class="btn-sm" onclick="PositionsTab.tailorResume(${pos.id})">
                   Tailor Resume
                 </button>
@@ -172,11 +192,11 @@ const PositionsTab = {
             <div data-testid="position-row" data-position-id="${pos.id}" class="position-group-row" style="margin-left: ${level * 20}px;">
               <div class="position-line">
                 <span class="badge ${scoreClass}" data-testid="position-score">${pos.match_score}</span>
-                <strong data-testid="position-title">${pos.title}</strong>
-                <span data-testid="position-company" class="text-faint">${pos.company_name}</span>
-                <span data-testid="position-country" class="text-sm-muted">${pos.country}</span>
-                <a href="${pos.link}" target="_blank" data-testid="position-link" class="text-sm">View</a>
-                <span class="badge ${statusBadgeClass} push-right">${pos.status}</span>
+                <strong data-testid="position-title">${escapeHtml(pos.title)}</strong>
+                <span data-testid="position-company" class="text-faint">${escapeHtml(pos.company_name)}</span>
+                <span data-testid="position-country" class="text-sm-muted">${escapeHtml(pos.country)}</span>
+                <a href="${safeHref(pos.link)}" target="_blank" data-testid="position-link" class="text-sm">View</a>
+                <span class="badge ${statusBadgeClass} push-right">${escapeHtml(pos.status)}</span>
                 <button class="btn-sm" onclick="PositionsTab.tailorResume(${pos.id})">
                   Tailor Resume
                 </button>
@@ -190,7 +210,7 @@ const PositionsTab = {
         keys.forEach(key => {
           const count = this.countPositionsInGroup(data[key]);
           html += `<div class="position-group-heading" style="margin-left: ${level * 20}px;">
-            ${key} <span class="text-sm-faint">(${count} ${count === 1 ? 'job' : 'jobs'})</span>
+            ${escapeHtml(key)} <span class="text-sm-faint">(${count} ${count === 1 ? 'job' : 'jobs'})</span>
           </div>`;
           renderGroup(data[key], level + 1);
         });
@@ -296,7 +316,7 @@ const PositionsTab = {
     const current = select.value;
     select.innerHTML = '<option value="">All Countries</option>';
     countries.forEach(c => {
-      select.innerHTML += `<option value="${c}">${c}</option>`;
+      select.innerHTML += `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`;
     });
     select.value = current;
   },
@@ -308,7 +328,7 @@ const PositionsTab = {
     const current = select.value;
     select.innerHTML = '<option value="">All Job Types</option>';
     jobTypes.forEach(jt => {
-      select.innerHTML += `<option value="${jt}">${jt}</option>`;
+      select.innerHTML += `<option value="${escapeHtml(jt)}">${escapeHtml(jt)}</option>`;
     });
     select.value = current;
   },
@@ -393,9 +413,9 @@ const PositionsTab = {
         <div class="field-stack">
           ${profiles.map(p => `
             <button class="profile-option" data-id="${p.id}" class="choice-card">
-              <strong>${p.name}</strong>
+              <strong>${escapeHtml(p.name)}</strong>
               <span class="hint-block">
-                ${Array.isArray(p.job_types) ? p.job_types.join(', ') : ''}${p.seniority_level ? ' — ' + p.seniority_level : ''}
+                ${escapeHtml(Array.isArray(p.job_types) ? p.job_types.join(', ') : '')}${p.seniority_level ? ' — ' + escapeHtml(p.seniority_level) : ''}
               </span>
             </button>
           `).join('')}

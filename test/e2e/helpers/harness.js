@@ -72,9 +72,11 @@ async function waitForHealth(port, child, timeoutMs = 30000) {
 // Seed the isolated database in its own process. sql.js keeps the whole database
 // in memory and rewrites the file on every save, so the seeder must finish and
 // exit before the server opens the file — two live writers would clobber it.
-function seedDatabase(dbPath) {
+// `scriptPath` defaults to the shared fixture (seed.js) but any module with the
+// same `if (require.main === module) { seed()... }` shape works, e.g. seed-xss.js.
+function seedDatabase(dbPath, scriptPath = path.join(__dirname, 'seed.js')) {
   return new Promise((resolve, reject) => {
-    const seeder = spawn(process.execPath, [path.join(__dirname, 'seed.js')], {
+    const seeder = spawn(process.execPath, [scriptPath], {
       cwd: REPO_ROOT,
       env: { ...process.env, JOBS_DB_PATH: dbPath },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -91,13 +93,14 @@ function seedDatabase(dbPath) {
 }
 
 // Boot the server on an ephemeral port with its own database in a temp dir.
-// Pass { seed: true } to populate it with the fixture dataset first.
+// Pass { seed: true } to populate it with the shared fixture dataset first,
+// or { seed: '/path/to/custom-seed.js' } to run a different seed script.
 async function startServer({ seed = false, ...env } = {}) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobhunter-e2e-'));
   const dbPath = path.join(tmpDir, 'test-jobs.db');
   const port = await freePort();
 
-  if (seed) await seedDatabase(dbPath);
+  if (seed) await seedDatabase(dbPath, typeof seed === 'string' ? seed : undefined);
 
   const child = spawn(process.execPath, [path.join(REPO_ROOT, 'src/server.js')], {
     cwd: REPO_ROOT,

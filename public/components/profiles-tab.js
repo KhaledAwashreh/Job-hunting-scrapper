@@ -3,6 +3,18 @@
  * Handles profile management, CV uploads, and time window settings
  */
 
+// Escapes a value for safe interpolation into innerHTML. Profile names are
+// normally authored locally, but are still user-supplied strings that reach
+// innerHTML unescaped (see issue #9) — treat them as untrusted like the rest.
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const ProfilesTab = {
   profiles: [],
   timeWindow: '30',
@@ -87,8 +99,8 @@ const ProfilesTab = {
         <div class="accordion-item">
           <div class="accordion-header" onclick="ProfilesTab.toggleAccordion(${idx})">
             <div class="flex-1">
-              <h4 class="mb-5">${profile.name}</h4>
-              <small class="text-muted">${jobTypesStr}</small>
+              <h4 class="mb-5">${escapeHtml(profile.name)}</h4>
+              <small class="text-muted">${escapeHtml(jobTypesStr)}</small>
             </div>
             <span class="accordion-icon">▼</span>
           </div>
@@ -96,28 +108,28 @@ const ProfilesTab = {
             <div class="grid-2">
               <div>
                 <strong>Job Types:</strong>
-                <div class="hint-sm">${jobTypesStr}</div>
+                <div class="hint-sm">${escapeHtml(jobTypesStr)}</div>
               </div>
               <div>
                 <strong>Seniority Level:</strong>
-                <div class="hint-sm">${profile.seniority_level || 'Not specified'}</div>
+                <div class="hint-sm">${escapeHtml(profile.seniority_level) || 'Not specified'}</div>
               </div>
               <div>
                 <strong>Years of Experience:</strong>
-                <div class="hint-sm">${yearsExp}</div>
+                <div class="hint-sm">${escapeHtml(yearsExp)}</div>
               </div>
               <div>
                 <strong>Work Location:</strong>
-                <div class="hint-sm">${workLocs}</div>
+                <div class="hint-sm">${escapeHtml(workLocs)}</div>
               </div>
               <div class="span-full">
                 <strong>Resume:</strong>
-                <div class="hint-sm">${profile.resume_file}</div>
+                <div class="hint-sm">${escapeHtml(profile.resume_file)}</div>
               </div>
               ${profile.secondary_category ? `
               <div class="span-full">
                 <strong>Secondary Category:</strong>
-                <div class="hint-sm">${profile.secondary_category}</div>
+                <div class="hint-sm">${escapeHtml(profile.secondary_category)}</div>
               </div>
               ` : ''}
             </div>
