@@ -221,8 +221,9 @@ async function scrapeWorkday(company, careerUrl) {
 function parseRSSJobs(xmlText, baseUrl) {
   const jobs = [];
 
-  // Extract each <item> block
-  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  // Extract each <item> block. Allow attributes on the opening tag (e.g. RSS 1.0/RDF
+  // feeds use <item rdf:about="..."> instead of plain <item>).
+  const itemRegex = /<item\b[^>]*>([\s\S]*?)<\/item>/gi;
   let itemMatch;
 
   while ((itemMatch = itemRegex.exec(xmlText)) !== null) {
@@ -247,7 +248,16 @@ function parseRSSJobs(xmlText, baseUrl) {
 
     const link = getField('link') || baseUrl || '';
     const pubDate = getField('pubDate');
-    const publishDate = pubDate ? new Date(pubDate).toISOString().split('T')[0] : '';
+    // Guard per-item: a single malformed pubDate must not throw and discard the
+    // whole feed (RangeError from toISOString() on an invalid date string).
+    let publishDate = '';
+    if (pubDate) {
+      try {
+        publishDate = new Date(pubDate).toISOString().split('T')[0];
+      } catch (err) {
+        publishDate = '';
+      }
+    }
     const category = getField('category');
 
     // Try to extract country/location from title (common in RSS: "Title - City, Country")
