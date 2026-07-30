@@ -1,4 +1,4 @@
-const { getDatabase, saveDatabase } = require('./schema');
+const { getDatabase, saveDatabase, flushDatabase, beginBatch, endBatch } = require('./schema');
 const { ensureArray } = require('../utils/typeHelpers');
 
 function runQuery(query, params = []) {
@@ -410,5 +410,11 @@ module.exports = {
   getTailoredResumesForPosition,
   getTailoredResumeById,
   getNextVersionForPositionProfile,
-  deleteTailoredResume
+  deleteTailoredResume,
+  // #28 — batched-write controls for bulk callers (see orchestrator.js's
+  // runScraper()). Re-exported from schema.js so callers only need one
+  // require ('../db/queries') for both querying and write-batching.
+  flushDatabase,
+  beginBatch,
+  endBatch
 };

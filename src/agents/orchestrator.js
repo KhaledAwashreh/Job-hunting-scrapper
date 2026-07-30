@@ -31,7 +31,10 @@ const {
   linkPositionToProfile,
   updatePositionProfileScore,
   setTimeWindowPreference,
-  getTimeWindowPreference
+  getTimeWindowPreference,
+  flushDatabase,
+  beginBatch,
+  endBatch
 } = require('../db/queries');
 
 let currentRunId = null;
@@ -244,6 +247,15 @@ async function runScraper() {
     let totalSkippedOld = 0;
     const errors = [];
 
+    // #28 — batch writes for the duration of the scrape instead of doing a
+    // full saveDatabase() (whole-DB export + rewrite) after every single
+    // addPosition()/linkPositionToProfile() call. flushDatabase() is called
+    // once per company below so a crash mid-run only loses that company's
+    // unsaved positions rather than the whole run, and endBatch() in the
+    // outer finally block guarantees a final flush on every exit path
+    // (success, thrown error, or timeout-triggered stop).
+    beginBatch();
+
     // Scrape each company
     for (const company of companies) {
       try {
@@ -441,6 +453,12 @@ async function runScraper() {
       } catch (companyError) {
         errors.push(`Error processing ${company.name}: ${companyError.message}`);
         logger.error(`Company scrape error (${company.name}): ${companyError.stack || companyError.message}`);
+      } finally {
+        // Checkpoint: commit this company's positions to disk now rather than
+        // waiting for the whole run to finish. Bounds the batching window to
+        // "one company" instead of "every company visited so far", while
+        // still avoiding a full saveDatabase() per position.
+        flushDatabase();
       }
     }
 
@@ -483,6 +501,10 @@ async function runScraper() {
     }
     throw error;
   } finally {
+    // Guarantee no batched write is left un-persisted on any exit path,
+    // including ones that never reached the per-company flush above (e.g. an
+    // error thrown before the companies loop starts).
+    endBatch();
     await acquireStateLock();
     try {
       isRunning = false;
