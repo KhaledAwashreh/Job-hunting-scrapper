@@ -233,8 +233,17 @@ function isKeywordAlwaysNegated(text, keywordRegex, windowWords = 5) {
     const start = match.index;
     const end = match.index + match[0].length;
 
-    const beforeWords = text.slice(0, start).split(/\s+/).filter(Boolean).slice(-windowWords).join(' ');
-    const afterWords = text.slice(end).split(/\s+/).filter(Boolean).slice(0, windowWords).join(' ');
+    // Don't let the window cross a sentence/clause boundary (., ;, !, ?) —
+    // a negation word in an earlier, unrelated clause (e.g. "This role does
+    // not require travel; fully remote.") shouldn't suppress a genuine
+    // positive claim elsewhere in the text (#51 follow-up).
+    const beforeClauseStart = text.slice(0, start).search(/[.;!?][^.;!?]*$/);
+    const clauseStart = beforeClauseStart === -1 ? 0 : beforeClauseStart + 1;
+    const afterBoundaryOffset = text.slice(end).search(/[.;!?]/);
+    const clauseEnd = afterBoundaryOffset === -1 ? text.length : end + afterBoundaryOffset;
+
+    const beforeWords = text.slice(clauseStart, start).split(/\s+/).filter(Boolean).slice(-windowWords).join(' ');
+    const afterWords = text.slice(end, clauseEnd).split(/\s+/).filter(Boolean).slice(0, windowWords).join(' ');
 
     const negated = NEGATION_WORDS.test(beforeWords) || NEGATION_WORDS.test(afterWords);
     if (!negated) {

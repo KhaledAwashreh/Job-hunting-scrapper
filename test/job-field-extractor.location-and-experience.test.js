@@ -23,6 +23,31 @@ describe('extractLocationType — negation handling (#51)', () => {
     const result = extractLocationType('Backend Engineer', 'We offer remote work options for this role.');
     assert.ok(result.includes('Remote'), `expected Remote tag, got ${JSON.stringify(result)}`);
   });
+
+  test('an unrelated negation in an earlier clause does not suppress a genuine Remote claim (QA follow-up)', () => {
+    const result = extractLocationType('Backend Engineer', 'This role does not require travel; fully remote.');
+    assert.ok(result.includes('Remote'), `expected Remote tag despite unrelated "not" earlier in the sentence, got ${JSON.stringify(result)}`);
+  });
+
+  test('an unrelated negation in an earlier sentence does not suppress a genuine Remote claim (QA follow-up)', () => {
+    const result = extractLocationType('Backend Engineer', 'Does not require a degree. Remote work available for the right candidate.');
+    assert.ok(result.includes('Remote'), `expected Remote tag despite unrelated "not" in a prior sentence, got ${JSON.stringify(result)}`);
+  });
+
+  test('"not wfh eligible" does not include Remote (negation covers wfh keyword too)', () => {
+    const result = extractLocationType('Backend Engineer', 'This role is not wfh eligible.');
+    assert.ok(!result.includes('Remote'), `expected no Remote tag, got ${JSON.stringify(result)}`);
+  });
+
+  test('"not a distributed team" does not include Remote (negation covers distributed keyword too)', () => {
+    const result = extractLocationType('Backend Engineer', 'This is not a distributed team role.');
+    assert.ok(!result.includes('Remote'), `expected no Remote tag, got ${JSON.stringify(result)}`);
+  });
+
+  test('a genuinely distributed-team description still returns Remote', () => {
+    const result = extractLocationType('Backend Engineer', 'We are a fully distributed team.');
+    assert.ok(result.includes('Remote'), `expected Remote tag, got ${JSON.stringify(result)}`);
+  });
 });
 
 describe('extractYearsExperience — "exp" word boundary (#53)', () => {
