@@ -487,84 +487,143 @@ function extractQualifications(text) {
   return qualLines.join('\n').replace(/<[^>]+>/g, '').substring(0, 800);
 }
 
+// Country names. Unlike the previous implementation, the order of these entries
+// does not matter: keys are matched as whole tokens, longest key first.
+const COUNTRY_NAMES = {
+  'netherlands': 'Netherlands', 'the netherlands': 'Netherlands', 'holland': 'Netherlands',
+  'spain': 'Spain', 'germany': 'Germany', 'uk': 'United Kingdom', 'u.k.': 'United Kingdom',
+  'united kingdom': 'United Kingdom', 'great britain': 'United Kingdom', 'england': 'United Kingdom',
+  'scotland': 'United Kingdom', 'wales': 'United Kingdom',
+  'us': 'United States', 'usa': 'United States', 'united states': 'United States',
+  'u.s.': 'United States', 'u.s.a.': 'United States',
+  'france': 'France', 'canada': 'Canada', 'italy': 'Italy',
+  'portugal': 'Portugal', 'belgium': 'Belgium', 'switzerland': 'Switzerland',
+  'austria': 'Austria', 'sweden': 'Sweden', 'norway': 'Norway',
+  'denmark': 'Denmark', 'finland': 'Finland', 'ireland': 'Ireland',
+  'poland': 'Poland', 'greece': 'Greece', 'czech republic': 'Czech Republic',
+  'czechia': 'Czech Republic', 'romania': 'Romania', 'hungary': 'Hungary',
+  'luxembourg': 'Luxembourg', 'mexico': 'Mexico', 'brazil': 'Brazil', 'brasil': 'Brazil',
+  'japan': 'Japan', 'south korea': 'South Korea', 'singapore': 'Singapore',
+  'india': 'India', 'china': 'China', 'australia': 'Australia',
+  'new zealand': 'New Zealand', 'uae': 'United Arab Emirates',
+  'saudi arabia': 'Saudi Arabia', 'jordan': 'Jordan', 'lebanon': 'Lebanon',
+  'israel': 'Israel', 'croatia': 'Croatia', 'slovenia': 'Slovenia',
+  'slovakia': 'Slovakia', 'lithuania': 'Lithuania', 'latvia': 'Latvia',
+  'estonia': 'Estonia', 'bulgaria': 'Bulgaria', 'cyprus': 'Cyprus', 'malta': 'Malta',
+  'united arab emirates': 'United Arab Emirates',
+};
+
+// Cities, consulted only when no explicit country name is present.
+const CITY_NAMES = {
+  // Netherlands
+  'amsterdam': 'Netherlands', 'rotterdam': 'Netherlands', 'eindhoven': 'Netherlands',
+  'utrecht': 'Netherlands', 'the hague': 'Netherlands', 'den haag': 'Netherlands',
+  'delft': 'Netherlands', 'groningen': 'Netherlands', 'hilversum': 'Netherlands',
+
+  // Spain
+  'barcelona': 'Spain', 'madrid': 'Spain', 'valencia': 'Spain', 'seville': 'Spain',
+  'sevilla': 'Spain', 'malaga': 'Spain', 'bilbao': 'Spain', 'zaragoza': 'Spain',
+
+  // Ireland
+  'dublin': 'Ireland', 'cork': 'Ireland', 'galway': 'Ireland', 'limerick': 'Ireland',
+
+  // Portugal
+  'lisbon': 'Portugal', 'lisboa': 'Portugal', 'porto': 'Portugal',
+  'braga': 'Portugal', 'coimbra': 'Portugal',
+
+  // United States (non-EU hub, resolved deliberately rather than by accident)
+  'chicago': 'United States', 'san francisco': 'United States', 'seattle': 'United States',
+  'new york': 'United States', 'boston': 'United States', 'austin': 'United States',
+  'denver': 'United States',
+
+  // India (non-EU hub)
+  'bengaluru': 'India', 'bangalore': 'India', 'hyderabad': 'India',
+  'pune': 'India', 'mumbai': 'India', 'chennai': 'India',
+
+  // Canada (non-EU hub)
+  'toronto': 'Canada', 'vancouver': 'Canada', 'montreal': 'Canada', 'ottawa': 'Canada',
+
+  // United Kingdom (non-EU hub)
+  'london': 'United Kingdom', 'manchester': 'United Kingdom', 'edinburgh': 'United Kingdom',
+  'cambridge': 'United Kingdom', 'bristol': 'United Kingdom',
+
+  // Brazil (non-EU hub). "porto alegre" must beat the "porto" entry above; the
+  // longest-key-first ordering below guarantees that without manual sequencing.
+  'sao paulo': 'Brazil', 'são paulo': 'Brazil', 'porto alegre': 'Brazil',
+  'sao jose dos campos': 'Brazil', 'são josé dos campos': 'Brazil',
+
+  // Germany
+  'berlin': 'Germany', 'munich': 'Germany', 'münchen': 'Germany',
+  'hamburg': 'Germany', 'frankfurt': 'Germany', 'cologne': 'Germany',
+};
+
+// Two-letter USPS state codes, used only to disambiguate "City, XX" — see
+// hasUsStateSuffix below for why the rule is deliberately narrow.
+const US_STATE_CODES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN',
+  'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV',
+  'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN',
+  'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY', 'DC',
+]);
+
+function escapeForRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Match a key only as a whole token. `\b` is ASCII-only and would break keys
+// like "münchen" and "são paulo", so the boundaries are Unicode letter/number
+// lookarounds instead. This is the fix for the old `includes()` behaviour, where
+// 'us' matched inside "Toulouse", "Aarhus" and even "Austria" itself — which
+// made the 'austria' key unreachable dead code.
+function wholeTokenRegex(key) {
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escapeForRegex(key)}(?![\\p{L}\\p{N}])`, 'iu');
+}
+
+// Longest key first, so a more specific key always wins over a prefix of it
+// ("porto alegre" over "porto"). This is what lets the maps above be ordered
+// for readability rather than for correctness.
+function compileMap(map) {
+  return Object.entries(map)
+    .sort((a, b) => b[0].length - a[0].length)
+    .map(([key, country]) => [wholeTokenRegex(key), country]);
+}
+
+// Compiled once at module load rather than on every call — extractCountry runs
+// for every scraped job.
+const COMPILED_COUNTRIES = compileMap(COUNTRY_NAMES);
+const COMPILED_CITIES = compileMap(CITY_NAMES);
+
+// True for "Cambridge, MA" but not for "Hybrid (Madrid or Buenos Aires)".
+//
+// The state code must be uppercase AND occupy the whole final comma-separated
+// segment. Without both conditions this is actively harmful: OR, IN, ME, OK, DE
+// and LA are state codes and ordinary English words, so a looser rule resolves
+// "Madrid or Buenos Aires" to the United States.
+function hasUsStateSuffix(locationText) {
+  const segments = locationText.split(',').map(s => s.trim());
+  if (segments.length < 2) return false;
+  // Tolerate a trailing ZIP: "New York, NY 10001".
+  const last = segments[segments.length - 1].replace(/\s+\d{5}(-\d{4})?$/, '');
+  return US_STATE_CODES.has(last);
+}
+
 function extractCountry(locationText) {
   if (!locationText) return '';
 
-  const countryMap = {
-    'netherlands': 'Netherlands', 'the netherlands': 'Netherlands', 'holland': 'Netherlands',
-    'spain': 'Spain', 'germany': 'Germany', 'uk': 'United Kingdom',
-    'united kingdom': 'United Kingdom', 'great britain': 'United Kingdom',
-    'us': 'United States', 'usa': 'United States', 'united states': 'United States',
-    'france': 'France', 'canada': 'Canada', 'italy': 'Italy',
-    'portugal': 'Portugal', 'belgium': 'Belgium', 'switzerland': 'Switzerland',
-    'austria': 'Austria', 'sweden': 'Sweden', 'norway': 'Norway',
-    'denmark': 'Denmark', 'finland': 'Finland', 'ireland': 'Ireland',
-    'poland': 'Poland', 'greece': 'Greece', 'czech republic': 'Czech Republic',
-    'czechia': 'Czech Republic', 'romania': 'Romania', 'hungary': 'Hungary',
-    'luxembourg': 'Luxembourg', 'mexico': 'Mexico',
-    'japan': 'Japan', 'south korea': 'South Korea', 'singapore': 'Singapore',
-    'india': 'India', 'china': 'China', 'australia': 'Australia',
-    'new zealand': 'New Zealand', 'uae': 'United Arab Emirates',
-    'saudi arabia': 'Saudi Arabia', 'jordan': 'Jordan', 'lebanon': 'Lebanon',
-    'israel': 'Israel', 'croatia': 'Croatia', 'slovenia': 'Slovenia',
-    'slovakia': 'Slovakia', 'lithuania': 'Lithuania', 'latvia': 'Latvia',
-    'estonia': 'Estonia', 'bulgaria': 'Bulgaria',
-    'united arab emirates': 'United Arab Emirates',
-
-    // City entries below MUST stay after every country-name entry above, so
-    // an explicit country name in the text always wins over an incidentally
-    // matching city (e.g. "Hybrid (Madrid or Buenos Aires)" resolves via the
-    // Spain city group below, but "Amsterdam, ... Netherlands" resolves via
-    // the "netherlands" country entry before it ever reaches the city map).
-
-    // Netherlands
-    'amsterdam': 'Netherlands', 'rotterdam': 'Netherlands', 'eindhoven': 'Netherlands',
-    'utrecht': 'Netherlands', 'the hague': 'Netherlands', 'den haag': 'Netherlands',
-    'delft': 'Netherlands', 'groningen': 'Netherlands', 'hilversum': 'Netherlands',
-
-    // Spain
-    'barcelona': 'Spain', 'madrid': 'Spain', 'valencia': 'Spain', 'seville': 'Spain',
-    'sevilla': 'Spain', 'malaga': 'Spain', 'bilbao': 'Spain', 'zaragoza': 'Spain',
-
-    // Ireland
-    'dublin': 'Ireland', 'cork': 'Ireland', 'galway': 'Ireland', 'limerick': 'Ireland',
-
-    // Portugal
-    'lisbon': 'Portugal', 'lisboa': 'Portugal', 'porto': 'Portugal',
-    'braga': 'Portugal', 'coimbra': 'Portugal',
-
-    // United States (non-EU hub, resolved deliberately rather than by accident)
-    'chicago': 'United States', 'san francisco': 'United States', 'seattle': 'United States',
-    'new york': 'United States', 'boston': 'United States', 'austin': 'United States',
-    'denver': 'United States',
-
-    // India (non-EU hub)
-    'bengaluru': 'India', 'bangalore': 'India', 'hyderabad': 'India',
-    'pune': 'India', 'mumbai': 'India', 'chennai': 'India',
-
-    // Canada (non-EU hub)
-    'toronto': 'Canada', 'vancouver': 'Canada', 'montreal': 'Canada', 'ottawa': 'Canada',
-
-    // United Kingdom (non-EU hub)
-    'london': 'United Kingdom', 'manchester': 'United Kingdom', 'edinburgh': 'United Kingdom',
-    'cambridge': 'United Kingdom', 'bristol': 'United Kingdom',
-
-    // Brazil (non-EU hub)
-    'sao paulo': 'Brazil', 'são paulo': 'Brazil',
-    'sao jose dos campos': 'Brazil', 'são josé dos campos': 'Brazil',
-
-    // Germany
-    'berlin': 'Germany', 'munich': 'Germany', 'münchen': 'Germany',
-    'hamburg': 'Germany', 'frankfurt': 'Germany', 'cologne': 'Germany',
-  };
-
-  const lower = locationText.toLowerCase();
-  for (const [key, country] of Object.entries(countryMap)) {
-    if (lower.includes(key)) {
-      return country;
-    }
+  // 1. An explicit country name always wins.
+  for (const [regex, country] of COMPILED_COUNTRIES) {
+    if (regex.test(locationText)) return country;
   }
 
+  // 2. "City, ST" is a US location even when the city name is ambiguous.
+  if (hasUsStateSuffix(locationText)) return 'United States';
+
+  // 3. Otherwise fall back to the city map.
+  for (const [regex, country] of COMPILED_CITIES) {
+    if (regex.test(locationText)) return country;
+  }
+
+  // Unrecognised: hand the original text back, as before.
   return locationText;
 }
 
@@ -595,5 +654,10 @@ module.exports = {
   extractCountry,
   detectPlatformAndSlug,
   parseRSSJobs,
-  PLATFORM_SCRAPERS
+  PLATFORM_SCRAPERS,
+  // Exported so tests can assert that every key is reachable. The original bug
+  // here was a key ('austria') that no input could ever reach, so that property
+  // is worth checking against the real maps rather than a copy of them.
+  COUNTRY_NAMES,
+  CITY_NAMES
 };
