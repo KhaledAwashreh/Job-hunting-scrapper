@@ -376,14 +376,20 @@ function isEngineeringRelevantTitle(title) {
     /\bproject manager\b/, /\bprogram manager\b(?!\s*engineer)/,
     /\bproduct owner\b/, /\bscrum master\b/,
     // Creative / content
-    /\bcreative\b/, /\bdesign(?:er)?\b(?!\s*engineer)/,
+    /\bcreative\b/,
+    // "design"/"designer" is only a non-engineering signal when there's no
+    // nearby "engineer" qualifying it. The lookahead tolerates a few
+    // intervening words so titles like "Design System Engineer" or
+    // "UI Design Tools Engineer" (not just "Design Engineer") are correctly
+    // recognized as engineering roles.
+    /\bdesign(?:er)?\b(?!(?:\s+\S+){0,4}\s*engineers?\b)/,
     /\bcontent\s+(writer|strategist|manager)\b/,
     /\bcommunity\s+manager\b/,
     // Administrative
     /\bevent\b/, /\boffice\s+manager\b/, /\badmin(?:istrativ)?e?\b/,
     /\bfacilities\b/, /\bexecutive assistant\b/, /\bprivacy\b/,
     // Data science (different career path from backend/platform)
-    /\bdata\s+scientist\b/, /\bdata\s+analyst\b/, /\bdata\s+engineer\b(?!.*(backend|java))/i,
+    /\bdata\s+scientist\b/, /\bdata\s+analyst\b/,
     // Security roles that are non-engineering
     /\bsecurity\s+(analyst|officer|specialist|manager|director)\b/i,
   ];
@@ -393,6 +399,17 @@ function isEngineeringRelevantTitle(title) {
     if (pattern.test(t)) {
       return false;
     }
+  }
+
+  // "Data Engineer" is generally a distinct career path from backend/platform
+  // engineering, but titles like "Backend Data Engineer" or "Java Backend
+  // Data Engineer" are backend roles with a data focus and should not be
+  // excluded. A trailing lookahead can only see text *after* the match, but
+  // the qualifier naturally comes *before* ("Backend Data Engineer", not
+  // "Data Engineer Backend") — so scan the whole title for the qualifier
+  // instead of relying on lookahead position.
+  if (/\bdata\s+engineer\b/.test(t) && !/\b(backend|java)\b/.test(t)) {
+    return false;
   }
 
   return true;
