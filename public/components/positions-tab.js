@@ -273,9 +273,16 @@ const PositionsTab = {
     }
   },
 
-  parseArray(jsonStr) {
+  parseArray(value) {
+    // The API already returns real arrays (src/db/queries.js runs ensureArray()
+    // on these fields), so the common case must be handled without JSON.parse:
+    // JSON.parse(anArray) stringifies it first (e.g. "Remote", unquoted), which
+    // is invalid JSON and throws. Only fall back to parsing for the legacy
+    // string-encoded form.
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string' || !value) return [];
     try {
-      const parsed = JSON.parse(jsonStr);
+      const parsed = JSON.parse(value);
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
