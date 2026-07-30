@@ -7,7 +7,12 @@ const mammoth = require('mammoth');
 const resumesDir = path.join(__dirname, '../../data/resumes');
 // Truncate resumes to 10k chars to fit within Claude API token limits
 const MAX_RESUME_LENGTH = 10000;
-// In-memory cache for parsed resumes (key: filename, value: { mtime, text })
+// In-memory cache for parsed resumes (key: resolved absolute file path,
+// value: { mtime, text }). Keying on the resolved path — not the bare
+// filename — matters because two different directories can hold
+// same-named files with identical mtimes (cp -p, rsync -a, git checkout,
+// coarse-granularity filesystems all produce this); a filename-only key
+// would serve one candidate's resume text under another candidate's name.
 const resumeCache = new Map();
 
 function clearResumeCache() {
@@ -29,16 +34,30 @@ async function parseResumes(dir = resumesDir) {
       .filter(f => f.endsWith('.pdf') || f.endsWith('.docx') || f.endsWith('.txt'))
       .sort();
 
+    // Evict cache entries for files that used to live in this directory but
+    // are no longer present (deleted, renamed, etc.), so the Map doesn't
+    // grow forever. Scoped to this directory's prefix only, so it never
+    // touches entries cached for other directories.
+    const resolvedDir = path.resolve(dir);
+    const currentPaths = new Set(filteredFiles.map(f => path.resolve(resolvedDir, f)));
+    const dirPrefix = resolvedDir + path.sep;
+    for (const key of resumeCache.keys()) {
+      if (key.startsWith(dirPrefix) && !currentPaths.has(key)) {
+        resumeCache.delete(key);
+      }
+    }
+
     const resumes = [];
     let index = 1;
 
     for (const filename of filteredFiles) {
       const filepath = path.join(dir, filename);
+      const resolvedPath = path.resolve(resolvedDir, filename);
 
       try {
         // Check cache first: if file hasn't changed, use cached text
         const stats = await fs.stat(filepath);
-        const cached = resumeCache.get(filename);
+        const cached = resumeCache.get(resolvedPath);
         if (cached && cached.mtime === stats.mtimeMs) {
           // Use cached text
           const text = cached.text;
@@ -79,7 +98,7 @@ async function parseResumes(dir = resumesDir) {
         if (text.trim()) {
           const isTruncated = text.length > MAX_RESUME_LENGTH;
           // Update cache
-          resumeCache.set(filename, { mtime: stats.mtimeMs, text });
+          resumeCache.set(resolvedPath, { mtime: stats.mtimeMs, text });
           resumes.push({
             index,
             filename,
