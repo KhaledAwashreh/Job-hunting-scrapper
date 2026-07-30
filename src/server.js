@@ -37,6 +37,12 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib'); // For PDF gener
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Resumes live here. RESUMES_DIR overrides the default so tests can point
+// uploads/deletes/cache-refreshes at an isolated temp directory instead of
+// the repo's real data/resumes/ — the same pattern JOBS_DB_PATH uses for the
+// database (see src/db/schema.js).
+const RESUMES_DIR = path.resolve(process.env.RESUMES_DIR || path.join(__dirname, '../data/resumes'));
+
 // Constants for validation
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -50,13 +56,54 @@ function isValidHttpUrl(urlStr) {
   }
 }
 
+// Resolve a user-supplied resume filename to an absolute path guaranteed to
+// live inside RESUMES_DIR, or return null if it does not.
+//
+// path.basename(filename) is the common answer here, but it's incomplete:
+// it doesn't reject a traversal attempt, it silently *rewrites* it. Given
+// '../../etc/passwd', basename() quietly returns 'passwd' and the caller
+// goes on to operate on data/resumes/passwd — a real file the attacker
+// didn't ask for, deleted (or read) without any indication that the
+// original request was bogus. That's worse than doing nothing: a 404 for a
+// substituted filename looks identical to a 404 for a typo, so a traversal
+// probe and an honest mistake are indistinguishable. basename() also does
+// nothing about a null byte embedded in the string, an absolute path
+// (basename('/etc/passwd') is still 'passwd', so no signal there either),
+// or drive-qualified Windows paths.
+//
+// Resolving the full path and checking containment via path.relative()
+// instead lets us tell traversal apart from "not found" and reject it
+// outright (400) rather than silently substituting a different target.
+function resolveResumePath(rawFilename) {
+  if (typeof rawFilename !== 'string' || rawFilename.length === 0) {
+    return null;
+  }
+  // fs syscalls reject embedded null bytes with a raw, uncaught-looking
+  // TypeError; check explicitly so this is a clean 400 instead.
+  if (rawFilename.indexOf('\0') !== -1) {
+    return null;
+  }
+
+  const resolved = path.resolve(RESUMES_DIR, rawFilename);
+  const relative = path.relative(RESUMES_DIR, resolved);
+
+  // relative === '' means rawFilename resolved to RESUMES_DIR itself (e.g.
+  // '.' or ''); relative.startsWith('..') or an absolute relative path both
+  // mean the resolved path escaped RESUMES_DIR entirely.
+  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return null;
+  }
+
+  return resolved;
+}
+
 // Rate limiting for scraper
 let lastScrapeStartTime = null;
 
 // Multer configuration for resume uploads
 const resumeStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../data/resumes'));
+    cb(null, RESUMES_DIR);
   },
   filename: (req, file, cb) => {
     // Sanitize filename - replace spaces with underscores, remove special chars
@@ -100,10 +147,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Database initialization guard
+// Database initialization guard. /api/health is exempt on purpose: its whole
+// job is to report that the database is down, so it must run the real
+// handler (which reports db_initialized/error/timestamp) instead of being
+// shortcut into this generic 503.
 let dbInitialized = false;
 app.use((req, res, next) => {
-  if (!dbInitialized && !req.path.startsWith('/health')) {
+  if (!dbInitialized && !req.path.startsWith('/api/health')) {
     return res.status(503).json({ error: 'Database not initialized' });
   }
   next();
@@ -369,7 +419,11 @@ app.delete('/api/resumes/:filename', async (req, res) => {
   try {
     const fs = require('fs');
     const filename = req.params.filename;
-    const filepath = path.join(__dirname, '../data/resumes', filename);
+    const filepath = resolveResumePath(filename);
+
+    if (!filepath) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
 
     if (!fs.existsSync(filepath)) {
       return res.status(404).json({ error: 'File not found' });
@@ -696,7 +750,7 @@ app.get('/api/tailored-resumes/:id/download', async (req, res) => {
 
         // Detect section headings (all caps)
         const isHeading = trimmed === trimmed.toUpperCase() && trimmed.length < 50 && !trimmed.includes(' ');
-        const font = isHeading ? timesRomanBold : timesRoman;
+        const font = isHeading ? timesRomanBold : timesRomanFont;
         const size = isHeading ? 12 : fontSize;
         const yOffset = isHeading ? 15 : 10;
 
