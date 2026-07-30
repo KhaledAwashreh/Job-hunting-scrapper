@@ -9,8 +9,10 @@ div.tab-content[panel-positions]
       option  ×5
     button[positions-refresh]
   div.filters.u-mt-15
-    select  ×3
-      option
+    select
+      option  ×5
+    select  ×2
+      option  ×2
   div[positions-list]
     table
       thead

@@ -28,9 +28,20 @@ const PositionsTab = {
   filterJobType: null,
   filterLocation: null,
   filterLevel: null,
+  initialized: false,
+  loadRequestId: 0,
 
   async init() {
-    this.setupEventListeners();
+    // dashboard.html calls init() on every Positions tab click, not just
+    // once. Without this guard, setupEventListeners() ran again on every
+    // revisit and stacked a duplicate listener on top of the existing ones,
+    // so a single later filter change fired one fetch per past visit
+    // (issue #10). Loading fresh data on every visit is still desired, so
+    // only listener registration is guarded, not loadPositions().
+    if (!this.initialized) {
+      this.setupEventListeners();
+      this.initialized = true;
+    }
     await this.loadPositions();
   },
 
@@ -54,6 +65,13 @@ const PositionsTab = {
   },
 
   async loadPositions() {
+    // Request-sequencing guard (issue #10): tag this call with a strictly
+    // increasing id. If a newer loadPositions() has started by the time this
+    // one's response lands, this one is stale — drop it instead of letting
+    // it overwrite this.positions with older data (the confirmed race where
+    // a slow response for an earlier filter selection wins over a fast one
+    // for a later selection).
+    const requestId = ++this.loadRequestId;
     try {
       const country = document.getElementById('countryFilter').value;
       const status = document.getElementById('statusFilter').value;
@@ -62,20 +80,36 @@ const PositionsTab = {
       if (status) url.searchParams.set('status', status);
 
       const res = await fetch(url);
-      this.positions = await res.json();
+      const data = await res.json();
+
+      if (requestId !== this.loadRequestId) return; // superseded by a newer request
+
+      this.positions = data;
       this.renderPositions();
       this.updateCountryFilter();
       this.updateJobTypeFilter();
+      this.updateFilterJobType();
+      this.updateFilterLocation();
+      this.updateFilterLevel();
     } catch (error) {
-      showError('Failed to load positions: ' + error.message);
+      if (requestId === this.loadRequestId) showError('Failed to load positions: ' + error.message);
     }
   },
 
   renderPositions() {
     const container = document.getElementById('positionsContainer');
-    
+
+    // #jobTypeFilter is the top filter bar select (real options, populated by
+    // updateJobTypeFilter()) whose change handler fired loadPositions() but
+    // whose value was never actually applied anywhere (issue #11). The
+    // server has no job_type query param, so — matching how filterJobType/
+    // filterLocation/filterLevel below already filter client-side — apply it
+    // here as a filter predicate over the already-loaded position list.
+    const topJobType = document.getElementById('jobTypeFilter')?.value || null;
+
     // Apply filters
     let filtered = this.positions.filter(pos => {
+      if (topJobType && pos.job_type !== topJobType) return false;
       if (this.filterJobType && pos.job_type !== this.filterJobType) return false;
       if (this.filterLocation) {
         const locs = this.parseArray(pos.location_type);
@@ -87,7 +121,7 @@ const PositionsTab = {
       }
       return true;
     });
-    
+
     if (filtered.length === 0) {
       container.innerHTML = '<div class="empty-state" data-testid="empty-state">No positions found with selected filters</div>';
       return;
@@ -96,6 +130,9 @@ const PositionsTab = {
     this.renderFlat(filtered);
     this.updateCountryFilter();
     this.updateJobTypeFilter();
+    this.updateFilterJobType();
+    this.updateFilterLocation();
+    this.updateFilterLevel();
   },
 
   renderFlat(positions) {
@@ -329,6 +366,48 @@ const PositionsTab = {
     select.innerHTML = '<option value="">All Job Types</option>';
     jobTypes.forEach(jt => {
       select.innerHTML += `<option value="${escapeHtml(jt)}">${escapeHtml(jt)}</option>`;
+    });
+    select.value = current;
+  },
+
+  // #filterJobType, #filterLocation and #filterLevel (dashboard.html) shipped
+  // with only a placeholder option and nothing ever populated them (issue
+  // #12), so the user could never pick a non-empty value even though the
+  // change handlers and renderPositions() filter predicate were already
+  // correct. Populate them the same way updateJobTypeFilter() populates the
+  // (separate) top-bar #jobTypeFilter select.
+  updateFilterJobType() {
+    const jobTypes = [...new Set(this.positions.map(p => p.job_type).filter(Boolean))].sort();
+    const select = document.getElementById('filterJobType');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">Filter by Job Type</option>';
+    jobTypes.forEach(jt => {
+      select.innerHTML += `<option value="${escapeHtml(jt)}">${escapeHtml(jt)}</option>`;
+    });
+    select.value = current;
+  },
+
+  updateFilterLocation() {
+    const locations = [...new Set(this.positions.flatMap(p => this.parseArray(p.location_type)).filter(Boolean))].sort();
+    const select = document.getElementById('filterLocation');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">Filter by Location Type</option>';
+    locations.forEach(loc => {
+      select.innerHTML += `<option value="${escapeHtml(loc)}">${escapeHtml(loc)}</option>`;
+    });
+    select.value = current;
+  },
+
+  updateFilterLevel() {
+    const levels = [...new Set(this.positions.flatMap(p => this.parseArray(p.seniority_level)).filter(Boolean))].sort();
+    const select = document.getElementById('filterLevel');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">Filter by Level</option>';
+    levels.forEach(lvl => {
+      select.innerHTML += `<option value="${escapeHtml(lvl)}">${escapeHtml(lvl)}</option>`;
     });
     select.value = current;
   },
