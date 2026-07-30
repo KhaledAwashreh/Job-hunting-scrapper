@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('../utils/loadEnv'); // loads .env from the project root, not process.cwd()
 
 const logger = require('../utils/logger');
 const { parseSearchParams } = require('../utils/csvParser');

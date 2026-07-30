@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('./utils/loadEnv'); // loads .env from the project root, not process.cwd()
 const express = require('express');
 const path = require('path');
 const multer = require('multer');
