@@ -33,7 +33,8 @@ Do not introduce additional frameworks or dependencies without being asked.
 
 ## After each module
 - Write tests under `test/<module>.test.js` using the built-in `node:test` runner
-- Run them with `npm test` (`node --test test/`)
+- Run them with `npm test` (`node --test test/*.test.js` — the glob is required; passing the
+  bare directory fails on Node 22, which resolves it as a CJS module)
 - Fix any failure before moving to the next module
 - Keep the tests in the repo — do not delete them after they pass
 
