@@ -2,7 +2,8 @@
 
 Date: 2026-07-30
 Branch: `fix-scoring-and-filtering`
-Status: **awaiting approval** — no implementation until this document is approved.
+Status: **approved and implemented** — all four phases landed (5239be5, 6b70dd9, ce1f07d, 03e1f1a).
+See §12 for what changed against this plan during implementation.
 
 ## 1. What was asked
 
@@ -109,9 +110,11 @@ test-owned.
 
 **Runner:** `node:test`, the same runner the 66 existing tests use.
 **Driver:** the `playwright` library, already a dependency.
-**Browsers:** `npx playwright install chromium` — needs to be run once. Documented in the README
-and guarded by a clear skip-with-message if the binary is absent, so `npm test` never hard-fails
-for someone who hasn't installed it.
+**Browsers:** the suite drives the system Chrome at `/usr/bin/google-chrome`. `npx playwright
+install chromium` was attempted and **fails on this machine** — playwright 1.60 has no build for
+Ubuntu 26.04 (`Playwright does not support chromium on ubuntu26.04-x64`). Driving the installed
+Chrome works identically and needs no download and no version bump. If no Chrome/Chromium is
+found the suite skips with an explicit message rather than failing.
 
 **Isolation (fixes D5).** `schema.js:7` becomes:
 
@@ -214,3 +217,62 @@ before being believed.
 
 Everything else in this document is a consequence of decisions already made
 (*Polish + E2E in place*, approach B, all four UI areas, the assertion criteria in §7).
+
+---
+
+## 12. What changed during implementation
+
+Recorded because three items differ materially from the plan above.
+
+### D1 was worse than described
+
+The spec said the country picker fell back to a 15-entry list missing Ireland and Portugal. That
+was true but academic: **`#countriesContainer` did not exist anywhere in `dashboard.html`**, so
+`companies-countries.js` logged `countriesContainer not found` and stopped. The picker had never
+rendered at all. Fixing it required adding the mount point as well as replacing the data source.
+
+Found by the E2E suite, not by reading the code — the earlier survey read the component and the CSP
+and drew a conclusion that was half right.
+
+### A second load-order bug surfaced
+
+`dashboard.html` called `loadPositions()` from an inline script that runs *before* the component
+scripts at the end of `<body>`, throwing `PositionsTab is not defined` on **every page load**. It
+was invisible because `PositionsTab.init()` on `DOMContentLoaded` loaded the positions a moment
+later. The "no uncaught console errors" assertion caught it on the suite's first run.
+
+### Playwright browsers cannot be installed here
+
+`npx playwright install chromium` fails: playwright 1.60 has no Ubuntu 26.04 build. The suite
+drives the system Chrome instead — no download, no dependency change, no version bump. §7 updated.
+
+### Phase outcomes
+
+| Phase | Commit | Result |
+|---|---|---|
+| P1 — testability + D1 | `5239be5` | `JOBS_DB_PATH` override; 57 `data-testid` hooks; country picker restored; load-order bug fixed. |
+| P3 — E2E data | `6b70dd9` | Fixture seeding in a separate process; 9 assertions on data extraction, scoring and per-tab rendering. |
+| P2/P4 — styling + snapshots | `ce1f07d` | Two `<style>` blocks → one tokenized `public/styles.css`; 23 inline styles removed from the markup; focus states; first `@media` query; DOM snapshots for four tabs. |
+| P2 cont. | `03e1f1a` | 50 of 53 component inline styles moved to classes; 3 depth-dependent ones documented as necessarily dynamic. |
+
+P3 was done before P2 because the fixtures close the user's stated concerns (data extraction,
+scoring) and do not depend on the styling work. Snapshot baselines were still taken last, as
+planned.
+
+### Verification
+
+66 unit tests + 24 E2E tests green. Every fix was mutation-checked rather than assumed:
+
+- Removing the countries mount point fails E2E 6 and 7; restoring the premature `loadPositions()`
+  call fails E2E 10.
+- Blanking the rendered company and binding the score to a nonexistent field fails E2E 3, 4 and 5.
+- Removing a heading from the companies panel fails that tab's snapshot and only that one.
+- Reverting the branch's country gate fails 4 unit tests; reverting the profile dedup key's
+  case-folding fails 4 unit tests.
+
+### Still open
+
+- Pixel snapshots remain deferred — they need `@playwright/test` or `pixelmatch`, both new
+  dependencies.
+- Issue #7 (`extractCountry` substring collisions) is filed and untouched; it is latent against the
+  current target set.
