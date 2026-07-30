@@ -71,6 +71,26 @@ function stopScraperGracefully() {
 }
 
 /**
+ * Build the record that gets hashed and persisted for a job that has passed
+ * all filters. Exists as its own function (rather than an inline object
+ * literal in `runScraper`) so `company_id` is guaranteed to be set on the
+ * object handed to `hashJob` — without it, two different companies posting
+ * an identical role hash identically and the second is dropped as a
+ * "duplicate". See `hasher.js` for the hash inputs themselves.
+ */
+function buildStorableJob(job, company, extracted, classifiedTypes) {
+  return {
+    ...job,
+    company_id: company.id,
+    country: job.country || company.country,
+    jobType: classifiedTypes.length > 0 ? classifiedTypes : ['Unspecified'],
+    locationType: extracted.locationType,
+    yearsExperience: extracted.yearsExperience,
+    seniorityLevel: extracted.seniorityLevel
+  };
+}
+
+/**
  * Ensure profiles exist. If the DB has no profiles, create them from
  * search-params.csv so filtering works correctly.
  *
@@ -350,14 +370,7 @@ async function runScraper() {
             totalPositionsFound++;
 
             // Build job data for storage
-            const jobWithCompany = {
-              ...job,
-              country: job.country || company.country,
-              jobType: classifiedTypes.length > 0 ? classifiedTypes : ['Unspecified'],
-              locationType: extracted.locationType,
-              yearsExperience: extracted.yearsExperience,
-              seniorityLevel: extracted.seniorityLevel
-            };
+            const jobWithCompany = buildStorableJob(job, company, extracted, classifiedTypes);
 
             // Compute hash
             const hash = hashJob(jobWithCompany);
@@ -491,5 +504,6 @@ module.exports = {
   getRunStatus,
   setTimeWindow,
   getTimeWindow,
-  ensureProfilesFromSearchParams
+  ensureProfilesFromSearchParams,
+  buildStorableJob
 };

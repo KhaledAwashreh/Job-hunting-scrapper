@@ -1,13 +1,16 @@
 const crypto = require('crypto');
 
 function hashJob(job) {
-  // Include company_id and link to prevent false duplicates across companies
+  // Include company_id and link to prevent false duplicates across companies.
+  // publishDate is deliberately excluded: many ATS bump the posted date to
+  // keep a still-open req looking fresh, and identity should be based on
+  // company + title + link (+ description/qualifications), not volatile
+  // presentation metadata that changes without the job itself changing.
   const raw = [
     job.company_id || '',
     job.title || '',
     job.description || '',
     job.qualifications || '',
-    job.publishDate || '',
     job.link || ''
   ].join('|');
 

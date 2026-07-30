@@ -26,6 +26,17 @@ function isWithinTimeWindow(publishDate, windowKey = 'all') {
 
   try {
     const postDate = new Date(publishDate);
+
+    // `new Date('N/A')` / `new Date('not-a-date')` never throw — they yield
+    // an Invalid Date, whose getTime() is NaN. Any arithmetic on that NaN
+    // propagates (daysDiff becomes NaN, and `NaN <= window.days` is always
+    // false), so the job was silently rejected instead of reaching the
+    // catch block below. Detect it explicitly and honour the documented
+    // intent: an unparseable date is treated as "accept it".
+    if (Number.isNaN(postDate.getTime())) {
+      return true;
+    }
+
     const now = new Date();
     const daysDiff = (now - postDate) / (1000 * 60 * 60 * 24);
 

@@ -37,6 +37,38 @@ function wordBoundaryMatch(haystack, needle) {
 }
 
 /**
+ * Whole-token country match, e.g. "Netherlands" inside
+ * "Amsterdam, North Holland, Netherlands" or "Ireland" inside "Dublin, Ireland".
+ *
+ * `jobFields._country` / `companyCountry` here are not always a bare,
+ * pre-resolved country name — they can be a raw "City, Region, Country"
+ * string (see `webScrapingAgent.js`, which often sets `country: job.location`
+ * verbatim). Plain `===` equality would therefore miss real matches, so this
+ * still needs to search for the target country as a token within the field
+ * rather than compare the two strings outright.
+ *
+ * This is the same defect class fixed in `extractCountry`
+ * (`src/agents/apiAgent.js`) — `.includes()` lets a short country name like
+ * "Niger" match anywhere inside a longer one like "Nigeria". The fix here
+ * follows the same shape: match only on whole tokens, with Unicode-aware
+ * boundaries (`\p{L}`/`\p{N}`) so accented names like "Türkiye" or multi-word
+ * ones aren't broken by ASCII `\W`/`\b`. Unlike `extractCountry`, this needs
+ * to check *both* directions (needle-in-haystack and haystack-in-needle)
+ * because either side — the free-text job location or the target country
+ * list — may be the longer string.
+ */
+function countryTokenMatch(a, b) {
+  return wholeTokenIncludes(a, b) || wholeTokenIncludes(b, a);
+}
+
+function wholeTokenIncludes(haystack, needle) {
+  if (!haystack || !needle) return false;
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu');
+  return regex.test(haystack);
+}
+
+/**
  * Classify a job by matching its title (and optionally description) against
  * the profile's job_types.
  *
@@ -278,17 +310,13 @@ function matchesProfile(jobFields, profile, searchParam = null, companyCountry =
       // Job has a usable location — it alone decides the match. A present
       // but unrecognized location (e.g. "N/A") must not fall through to the
       // company country; it is rejected here.
-      const jobMatch = targetCountries.some(tc =>
-        jobCountry.includes(tc) || tc.includes(jobCountry)
-      );
+      const jobMatch = targetCountries.some(tc => countryTokenMatch(jobCountry, tc));
       if (!jobMatch) {
         return false;
       }
     } else {
       // Job location absent — fall back to company's home country.
-      const compMatch = compCountry && targetCountries.some(tc =>
-        compCountry.includes(tc) || tc.includes(compCountry)
-      );
+      const compMatch = compCountry && targetCountries.some(tc => countryTokenMatch(compCountry, tc));
       if (!compMatch) {
         return false;
       }
