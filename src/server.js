@@ -28,6 +28,7 @@ const {
   deleteTailoredResume,
 } = require('./db/queries');
 const resumeCache = require('./utils/resumeCache');
+const { VALID_SENIORITY } = require('./utils/csvParser');
 const { tailorResume } = require('./utils/resumeTailor');
 const { runScraper, getRunStatus, setTimeWindow, getTimeWindow } = require('./agents/orchestrator');
 const logger = require('./utils/logger');
@@ -187,8 +188,15 @@ const validateProfileInput = (req, res, next) => {
   if (!resume_file || typeof resume_file !== 'string' || resume_file.length === 0) {
     return res.status(400).json({ error: 'Invalid resume_file' });
   }
-  if (seniority_level && typeof seniority_level !== 'string') {
-    return res.status(400).json({ error: 'seniority_level must be a string' });
+  if (seniority_level) {
+    if (typeof seniority_level !== 'string') {
+      return res.status(400).json({ error: 'seniority_level must be a string' });
+    }
+    // Reject unrecognized seniority values instead of silently accepting them,
+    // which would disable seniority filtering downstream (mirrors csvParser's check).
+    if (!VALID_SENIORITY.includes(seniority_level.trim().toLowerCase())) {
+      return res.status(400).json({ error: `Invalid seniority_level (must be one of: ${VALID_SENIORITY.join(', ')})` });
+    }
   }
   if (!job_types || !Array.isArray(job_types) || job_types.length === 0) {
     return res.status(400).json({ error: 'job_types must be a non-empty array' });
