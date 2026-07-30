@@ -395,6 +395,20 @@ async function runScraper() {
               }
             }
 
+            // scorePosition() returns the sentinel score -1 when the LLM reply
+            // couldn't be parsed as JSON (issue #44), specifically so a parse
+            // failure isn't silently indistinguishable from a genuine 0. But
+            // the DB column and the positions-tab UI badge only understand
+            // 0-100 — nothing downstream interprets a raw -1 — so a negative
+            // number would just leak into the table/UI as a confusing display
+            // value instead of actually surfacing the failure. This is the
+            // one place that can still tell the two apart: log it distinctly
+            // here, then store an honest 0 so storage/UI stay well-formed.
+            if (scoreData.score === -1) {
+              logger.warn(`Scoring response for "${job.title}" could not be parsed as JSON — storing as unscored (0), not a genuine low match: ${scoreData.reasoning}`);
+              scoreData = { ...scoreData, score: 0 };
+            }
+
             // Insert position
             const result = addPosition(
               hash,
