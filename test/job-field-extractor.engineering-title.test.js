@@ -25,6 +25,21 @@ describe('isEngineeringRelevantTitle — design/engineer adjacency (#47)', () =>
     assert.equal(isEngineeringRelevantTitle('UX Designer'), false);
     assert.equal(isEngineeringRelevantTitle('Senior Creative Designer'), false);
   });
+
+  // Regression: the adjacency tolerance is deliberately capped at 2
+  // intervening words. A wider tolerance starts accepting non-engineering
+  // titles where "engineer" merely appears later in a long title (real job
+  // titles often carry seniority/location/employment-type boilerplate),
+  // e.g. a design-adjacent support/coordination role that happens to
+  // mention "Engineer" a few words later is still not itself an
+  // engineering role.
+  test('non-engineering design-adjacent titles with "engineer" more than 2 words away are still rejected', () => {
+    assert.equal(isEngineeringRelevantTitle('Design Liaison to the Engineer Team'), false);
+    assert.equal(isEngineeringRelevantTitle('Design Coordinator for our Engineer Onboarding'), false);
+    assert.equal(isEngineeringRelevantTitle('Design Intern shadowing a Senior Engineer'), false);
+    assert.equal(isEngineeringRelevantTitle('Junior Designer assisting the Lead Engineer'), false);
+    assert.equal(isEngineeringRelevantTitle('Design Assistant to the Chief Engineer'), false);
+  });
 });
 
 describe('isEngineeringRelevantTitle — backend/java data engineer qualifiers (#48)', () => {

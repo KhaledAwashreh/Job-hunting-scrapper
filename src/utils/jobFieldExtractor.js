@@ -378,11 +378,17 @@ function isEngineeringRelevantTitle(title) {
     // Creative / content
     /\bcreative\b/,
     // "design"/"designer" is only a non-engineering signal when there's no
-    // nearby "engineer" qualifying it. The lookahead tolerates a few
+    // nearby "engineer" qualifying it. The lookahead tolerates up to 2
     // intervening words so titles like "Design System Engineer" or
-    // "UI Design Tools Engineer" (not just "Design Engineer") are correctly
-    // recognized as engineering roles.
-    /\bdesign(?:er)?\b(?!(?:\s+\S+){0,4}\s*engineers?\b)/,
+    // "UI Design Tools Engineer" / "Design System Platform Engineer" (not
+    // just "Design Engineer") are correctly recognized as engineering
+    // roles. Capped at 2 (not wider) because real job titles often carry
+    // long boilerplate suffixes (seniority, location, employment type), and
+    // a wider tolerance starts accepting genuinely non-engineering titles
+    // where "engineer" merely appears somewhere later in the string, e.g.
+    // "Design Assistant to the Chief Engineer" or "Junior Designer
+    // assisting the Lead Engineer" (both non-engineering roles).
+    /\bdesign(?:er)?\b(?!(?:\s+\S+){0,2}\s*engineers?\b)/,
     /\bcontent\s+(writer|strategist|manager)\b/,
     /\bcommunity\s+manager\b/,
     // Administrative
