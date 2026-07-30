@@ -193,9 +193,17 @@ function getPositionById(positionId) {
 }
 
 function createScrapeRun(startedAt) {
-  runWrite('INSERT INTO scrape_runs (started_at) VALUES (?)', [startedAt]);
-  const result = runQuery('SELECT last_insert_rowid() as id');
-  return result[0]?.id || 1;
+  // scrape_runs has no natural unique key to re-select on (unlike addPosition's
+  // hash workaround), so the id MUST be captured via last_insert_rowid() before
+  // saveDatabase() runs. saveDatabase() calls database.export(), which resets
+  // the connection's last_insert_rowid() to 0 — reading it after runWrite()
+  // (which calls saveDatabase() internally) always returned 0, and the old
+  // `|| 1` fallback then masked that by hardcoding row 1 for every run.
+  const db = getDatabase();
+  db.run('INSERT INTO scrape_runs (started_at) VALUES (?)', [startedAt]);
+  const id = db.exec('SELECT last_insert_rowid()')[0].values[0][0];
+  saveDatabase();
+  return id;
 }
 
 function updateScrapeRun(runId, finishedAt, companiesVisited, positionsFound, positionsNew, errorsJson) {
