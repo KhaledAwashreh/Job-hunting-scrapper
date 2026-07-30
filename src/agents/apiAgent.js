@@ -12,8 +12,53 @@ const API_RATE_LIMIT_MS = process.env.JOB_API_RATE_LIMIT_MS !== undefined
 // an unbounded number of requests (issue #40).
 const MAX_JSON_API_PAGES = 20;
 
+// Retry/backoff for transient failures (issue #43). Overridable via env for
+// tests, same pattern as API_RATE_LIMIT_MS above.
+const RETRY_ATTEMPTS = process.env.JOB_API_RETRY_ATTEMPTS !== undefined
+  ? Number(process.env.JOB_API_RETRY_ATTEMPTS)
+  : 3;
+const RETRY_BASE_DELAY_MS = process.env.JOB_API_RETRY_BASE_DELAY_MS !== undefined
+  ? Number(process.env.JOB_API_RETRY_BASE_DELAY_MS)
+  : 500;
+
 async function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// A failure is "transient" (worth retrying) if it's a network-level error
+// with no response at all (timeout, DNS failure, connection reset), a 5xx
+// server error, or a 429 rate limit. Any other HTTP status (400, 401, 403,
+// 404, ...) is a client error that will fail identically on every retry, so
+// it's re-thrown immediately instead of burning attempts on it (issue #43).
+function isTransientError(error) {
+  if (!error.response) return true;
+  const status = error.response.status;
+  return status === 429 || status >= 500;
+}
+
+/**
+ * Run a single network call (`fn`) with retry + exponential backoff on
+ * transient failures (issue #43). Non-transient errors are re-thrown on the
+ * first attempt. Once attempts are exhausted, the last error is re-thrown so
+ * the caller's own try/catch can distinguish "the call failed" from
+ * "the call succeeded with zero results" (issue #38).
+ */
+async function withRetry(fn, label) {
+  let lastError;
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientError(error) || attempt === RETRY_ATTEMPTS) {
+        throw error;
+      }
+      const backoffMs = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+      console.warn(`  ⚠ Transient error${label ? ` (${label})` : ''}, retrying in ${backoffMs}ms (attempt ${attempt}/${RETRY_ATTEMPTS}): ${error.message}`);
+      await delay(backoffMs);
+    }
+  }
+  throw lastError;
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +154,7 @@ async function scrapeGreenhouse(slug) {
   try {
     await delay(API_RATE_LIMIT_MS);
     const url = `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`;
-    const response = await axios.get(url, { timeout: 15000 });
+    const response = await withRetry(() => axios.get(url, { timeout: 15000 }), 'Greenhouse');
 
     if (!response.data || !response.data.jobs) {
       console.warn(`  ⚠ Greenhouse API returned no jobs for slug "${slug}"`);
@@ -125,9 +170,14 @@ async function scrapeGreenhouse(slug) {
       country: extractCountry(job.location?.name) || ''
     })).filter(j => j.title);
   } catch (error) {
+    // The request itself failed (network error, timeout, 5xx, 429 that
+    // exhausted retries, ...) — return null, distinct from the `[]` above
+    // (a successful call that genuinely found zero jobs), so callers can
+    // tell "failed, maybe fall back / retry" from "succeeded, zero results"
+    // (issue #38).
     console.error(`  ⚠ Greenhouse API error for ${slug}: ${error.message}`);
     logger.error(`Greenhouse API failed for ${slug}: ${error.stack || error.message}`);
-    return [];
+    return null;
   }
 }
 
@@ -145,7 +195,7 @@ async function scrapeLever(slug) {
   try {
     await delay(API_RATE_LIMIT_MS);
     const url = `https://api.lever.co/v0/postings/${slug}?mode=json`;
-    const response = await axios.get(url, { timeout: 15000 });
+    const response = await withRetry(() => axios.get(url, { timeout: 15000 }), 'Lever');
 
     // Lever returns a flat array. Handle both formats:
     //   [{...}, {...}]                                    (current)
@@ -183,9 +233,11 @@ async function scrapeLever(slug) {
       )
     })).filter(j => j.title);
   } catch (error) {
+    // See scrapeGreenhouse above: null (call failed) is kept distinct from
+    // the `[]` returned when the API genuinely has no postings (issue #38).
     console.error(`  ⚠ Lever API error for ${slug}: ${error.message}`);
     logger.error(`Lever API failed for ${slug}: ${error.stack || error.message}`);
-    return [];
+    return null;
   }
 }
 
@@ -296,14 +348,17 @@ async function scrapeRSSFeed(rssUrl) {
   try {
     await delay(API_RATE_LIMIT_MS);
     console.log(`  → Fetching RSS feed: ${rssUrl}`);
-    const response = await axios.get(rssUrl, { timeout: 20000, responseType: 'text' });
+    const response = await withRetry(() => axios.get(rssUrl, { timeout: 20000, responseType: 'text' }), 'RSS');
     const jobs = parseRSSJobs(response.data, rssUrl);
     console.log(`  → RSS feed returned ${jobs.length} jobs`);
     return jobs;
   } catch (error) {
+    // null (call failed, retries exhausted) vs. an empty array from
+    // parseRSSJobs (call succeeded, feed genuinely has zero items) — see
+    // scrapeGreenhouse above (issue #38).
     console.error(`  ⚠ RSS feed error for ${rssUrl}: ${error.message}`);
     logger.error(`RSS feed failed: ${error.stack || error.message}`);
-    return [];
+    return null;
   }
 }
 
@@ -407,7 +462,7 @@ async function scrapeJSONAPI(apiUrl, company) {
     for (;;) {
       await delay(API_RATE_LIMIT_MS);
 
-      const response = await axios.get(fetchUrl, { timeout: 15000, params: fetchParams });
+      const response = await withRetry(() => axios.get(fetchUrl, { timeout: 15000, params: fetchParams }), 'JSON API');
       pageCount++;
 
       const items = extractItemsArray(response.data);
@@ -456,9 +511,12 @@ async function scrapeJSONAPI(apiUrl, company) {
         item.country || item.location || item.locations?.[0]?.name || item.categories?.location || company?.country || '')
     })).filter(j => j.title);
   } catch (error) {
+    // null (call failed, retries exhausted) vs. an empty array above (call
+    // succeeded, API genuinely returned zero items) — see scrapeGreenhouse
+    // above (issue #38).
     console.error(`  ⚠ JSON API error for ${apiUrl}: ${error.message}`);
     logger.error(`JSON API failed for ${apiUrl}: ${error.stack || error.message}`);
-    return [];
+    return null;
   }
 }
 
@@ -527,10 +585,15 @@ async function scrapeByPlatform(company) {
     // If the platform needs a slug but we have an api_url, use it directly
     if (company.api_url) {
       console.log(`  → Using custom API URL for ${company.name}: ${company.api_url}`);
-      if (platform === 'rss') {
-        return await scrapeRSSFeed(company.api_url);
-      }
-      return await scrapeJSONAPI(company.api_url, company);
+      // Normalized the same way as the scraper.fn() dispatch below (issue
+      // #38): an empty/failed result — whether the call itself failed
+      // (null) or genuinely found zero jobs ([]) — becomes null here so the
+      // caller's `if (!jobs)` fallback-to-web-scraping check actually
+      // engages instead of silently treating `[]` as a successful scrape.
+      const jobs = platform === 'rss'
+        ? await scrapeRSSFeed(company.api_url)
+        : await scrapeJSONAPI(company.api_url, company);
+      return (jobs && jobs.length > 0) ? jobs : null;
     }
     
     // Check if we need to try RSS-based scraping for known patterns
