@@ -1,8 +1,16 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 
-// Rate limiting: minimum delay between API requests (ms)
-const API_RATE_LIMIT_MS = 1000;
+// Rate limiting: minimum delay between API requests (ms). Overridable via env
+// so tests exercising multi-page pagination don't have to burn real wall-clock
+// time — production always gets the 1000ms default.
+const API_RATE_LIMIT_MS = process.env.JOB_API_RATE_LIMIT_MS !== undefined
+  ? Number(process.env.JOB_API_RATE_LIMIT_MS)
+  : 1000;
+
+// scrapeJSONAPI pagination: sane cap so a misbehaving/looping API can't cause
+// an unbounded number of requests (issue #40).
+const MAX_JSON_API_PAGES = 20;
 
 async function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -304,41 +312,136 @@ async function scrapeRSSFeed(rssUrl) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Pull the job-items array out of a JSON API response body, regardless of
+ * which of the supported shapes it used.
+ */
+function extractItemsArray(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.jobs)) return data.jobs;
+  if (data && Array.isArray(data.data)) return data.data;
+  if (data && Array.isArray(data.results)) return data.results;
+  if (data && Array.isArray(data.postings)) return data.postings;
+  return null;
+}
+
+/**
+ * Look for a `Link: <url>; rel="next"` response header (standard REST
+ * pagination convention). Returns an absolute URL to fetch next, or null.
+ */
+function getNextLinkFromHeader(headers, currentUrl) {
+  const linkHeader = headers && (headers.link || headers.Link);
+  if (!linkHeader) return null;
+  const match = linkHeader.match(/<([^>]+)>\s*;\s*rel="?next"?/i);
+  if (!match) return null;
+  try {
+    return new URL(match[1], currentUrl).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Look for page-number or cursor pagination fields in the response body
+ * (e.g. `{ page: 1, totalPages: 5, nextPage: 2 }` or `{ nextCursor: '...' }`).
+ * Returns query params to send on the next request, or null if the body
+ * gives no indication there's another page.
+ */
+function getNextPageParams(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+
+  if (data.nextPage) {
+    return { page: data.nextPage };
+  }
+
+  if (Number.isFinite(data.page) && Number.isFinite(data.totalPages) && data.page < data.totalPages) {
+    return { page: data.page + 1 };
+  }
+
+  const cursor = data.nextCursor || data.next_cursor || data.cursor;
+  if (cursor) {
+    return { cursor };
+  }
+
+  return null;
+}
+
+/**
+ * Resolve a job's link against the company's career/API URL, the same way
+ * webScrapingAgent.js resolves relative hrefs found in HTML. Custom JSON
+ * APIs commonly return relative paths (e.g. "/careers/data-engineer-123"),
+ * which are useless verbatim in the UI and dedup hashing (issue #42).
+ */
+function resolveJobLink(link, base) {
+  if (!link) return '';
+  if (!base) return link;
+  try {
+    return new URL(link, base).href;
+  } catch {
+    return link;
+  }
+}
+
+/**
  * Scrape a JSON API endpoint that returns job listings.
  * Handles various response shapes:
  *   { jobs: [...] }
  *   { data: [...] }
  *   [...] (flat array)
  *   { results: [...] }
+ *
+ * Follows pagination if the response signals more pages are available, via
+ * (checked in order) a `Link: rel="next"` header, a `nextPage`/`page`+
+ * `totalPages` field, or a cursor field — capped at MAX_JSON_API_PAGES
+ * requests so a misbehaving API can't cause unbounded fetching.
  */
 async function scrapeJSONAPI(apiUrl, company) {
+  const linkBase = company?.career_url || company?.api_url || apiUrl;
   try {
-    await delay(API_RATE_LIMIT_MS);
+    let allItems = [];
+    let fetchUrl = apiUrl;
+    let fetchParams;
+    let pageCount = 0;
+
     console.log(`  → Fetching JSON API: ${apiUrl}`);
-    const response = await axios.get(apiUrl, { timeout: 15000 });
 
-    let items = null;
+    for (;;) {
+      await delay(API_RATE_LIMIT_MS);
 
-    if (Array.isArray(response.data)) {
-      items = response.data;
-    } else if (Array.isArray(response.data.jobs)) {
-      items = response.data.jobs;
-    } else if (Array.isArray(response.data.data)) {
-      items = response.data.data;
-    } else if (Array.isArray(response.data.results)) {
-      items = response.data.results;
-    } else if (Array.isArray(response.data.postings)) {
-      items = response.data.postings;
+      const response = await axios.get(fetchUrl, { timeout: 15000, params: fetchParams });
+      pageCount++;
+
+      const items = extractItemsArray(response.data);
+      if (items && items.length > 0) {
+        allItems = allItems.concat(items);
+      }
+
+      if (!items || items.length === 0 || pageCount >= MAX_JSON_API_PAGES) break;
+
+      const nextLink = getNextLinkFromHeader(response.headers, fetchUrl);
+      if (nextLink) {
+        fetchUrl = nextLink;
+        fetchParams = undefined;
+        continue;
+      }
+
+      const nextPageParams = getNextPageParams(response.data);
+      if (nextPageParams) {
+        fetchUrl = apiUrl;
+        fetchParams = nextPageParams;
+        continue;
+      }
+
+      break;
     }
 
-    if (!items || items.length === 0) {
+    if (allItems.length === 0) {
       console.warn(`  ⚠ JSON API returned no jobs for ${apiUrl}`);
       return [];
     }
 
-    console.log(`  → JSON API returned ${items.length} items`);
+    console.log(`  → JSON API returned ${allItems.length} items${pageCount > 1 ? ` across ${pageCount} pages` : ''}`);
 
-    return items.map(item => ({
+    return allItems.map(item => ({
       title: item.title || item.job_title || item.name || item.text || '',
       description: truncate(
         (item.description || item.job_description || item.content?.text || item.content || ''), 2000),
@@ -346,7 +449,9 @@ async function scrapeJSONAPI(apiUrl, company) {
         (item.qualifications || item.requirements || item.content?.text || item.description || '')),
       publishDate: formatDate(
         item.publishDate || item.published_at || item.createdAt || item.date || item.updated_at || ''),
-      link: item.link || item.url || item.applicationLink || item.absolute_url || item.hostedUrl || item.job_url || '',
+      link: resolveJobLink(
+        item.link || item.url || item.applicationLink || item.absolute_url || item.hostedUrl || item.job_url || '',
+        linkBase),
       country: extractCountry(
         item.country || item.location || item.locations?.[0]?.name || item.categories?.location || company?.country || '')
     })).filter(j => j.title);
@@ -621,8 +726,27 @@ function hasUsStateSuffix(locationText) {
   return US_STATE_CODES.has(last);
 }
 
+// Some JSON APIs return location as an object instead of a plain string
+// (e.g. `{ city: 'Amsterdam', country: 'Netherlands' }`). extractCountry is
+// called from several sites (Greenhouse/Lever/RSS already drill into `.name`
+// first), and scrapeJSONAPI's response shape is inherently unpredictable, so
+// the defensive coercion lives here once rather than at each call site.
+function coerceLocationToString(locationText) {
+  if (typeof locationText === 'string') return locationText;
+  if (typeof locationText.name === 'string' && locationText.name) return locationText.name;
+  if (locationText.city || locationText.state || locationText.country) {
+    return [locationText.city, locationText.state, locationText.country].filter(Boolean).join(', ');
+  }
+  return '';
+}
+
 function extractCountry(locationText) {
   if (!locationText) return '';
+
+  if (typeof locationText !== 'string') {
+    locationText = coerceLocationToString(locationText);
+    if (!locationText) return '';
+  }
 
   // 1. An explicit country name always wins.
   for (const [regex, country] of COMPILED_COUNTRIES) {
