@@ -53,6 +53,16 @@ function isPidAlive(pid) {
   }
 }
 
+// Blocks the event loop for roughly `ms` milliseconds. Only ever used on the
+// rare lock-contention path in acquireLock() below (never on the common
+// uncontended startup path), to wait out the brief gap between a competing
+// process's fs.mkdirSync(lockPath) and its follow-up pid write — not a
+// general-purpose sleep.
+function spinWaitMs(ms) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) { /* busy-wait */ }
+}
+
 function acquireLock() {
   if (lockAcquired) return; // already held by this process (e.g. re-init in tests)
   try {
@@ -61,14 +71,34 @@ function acquireLock() {
     if (err.code !== 'EEXIST') throw err;
 
     const pidFile = path.join(lockPath, 'pid');
+
+    // fs.mkdirSync(lockPath) and the pid write at the bottom of this function
+    // are two separate syscalls, not one atomic operation. If a second
+    // process calls acquireLock() while a first process's mkdirSync has
+    // succeeded but its pid write hasn't happened yet, a naive one-shot read
+    // here would see "no pid file" and — before this fix — treat that
+    // identically to "the holder crashed", reclaiming a lock that is very
+    // much still live. Retry briefly (far longer than the sub-millisecond
+    // gap between those two syscalls) before concluding the lock is actually
+    // orphaned, so a genuinely concurrent acquisition is detected as "in use"
+    // instead of being stolen.
     let holderPid = null;
-    try {
-      holderPid = parseInt(fs.readFileSync(pidFile, 'utf8'), 10);
-    } catch (_) {
-      // missing/corrupt pid file — treat as an orphaned lock below
+    let pidAvailable = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const parsed = parseInt(fs.readFileSync(pidFile, 'utf8'), 10);
+        if (!Number.isNaN(parsed)) {
+          holderPid = parsed;
+          pidAvailable = true;
+          break;
+        }
+      } catch (_) {
+        // not written yet (or removed concurrently) — retry below
+      }
+      if (attempt < 9) spinWaitMs(20);
     }
 
-    if (isPidAlive(holderPid)) {
+    if (pidAvailable && isPidAlive(holderPid)) {
       throw new Error(
         `Database "${dbPath}" is already in use by another process (pid ${holderPid}). ` +
         `sql.js rewrites the whole database file on every save with no merge, so two ` +
@@ -77,7 +107,8 @@ function acquireLock() {
       );
     }
 
-    // Orphaned lock (holder process is gone) — reclaim it.
+    // Orphaned lock (holder process crashed, whether before or after writing
+    // its pid) — reclaim it.
     fs.rmSync(lockPath, { recursive: true, force: true });
     fs.mkdirSync(lockPath);
   }

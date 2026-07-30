@@ -167,4 +167,75 @@ describe('#26 — cross-process database lock', () => {
       'a lock whose holder pid is no longer alive must be reclaimed, not treated as a live conflict'
     );
   });
+
+  // Regression tests for a TOCTOU gap in the original acquireLock(): mkdirSync
+  // (create the lock dir) and the pid write are two separate syscalls, not
+  // one atomic step. A one-shot read that finds no pid file used to be
+  // treated exactly like "the holder crashed", which meant a second process
+  // racing the *same* narrow window between those two syscalls could steal a
+  // lock that was still very much alive. acquireLock() now retries briefly
+  // before concluding a missing pid file means an orphaned lock. These tests
+  // exercise that decision deterministically (no real inter-process timing
+  // dependency) by requiring a fresh copy of schema.js against its own temp
+  // db path and controlling exactly what its pid-file reads see.
+  test('a pid file that only appears after a couple of retries (simulating a concurrent acquireLock() still in progress) is treated as a live holder, not stolen', async () => {
+    const racyDbPath = path.join(tmpDir, 'racy-live-test.db');
+    const racyLockDir = `${racyDbPath}.lock`;
+    fs.mkdirSync(racyLockDir); // simulate: another process's mkdirSync already won, pid not written yet
+    const pidFilePath = path.join(racyLockDir, 'pid');
+
+    const origReadFileSync = fs.readFileSync;
+    let readAttempts = 0;
+    fs.readFileSync = function (file, ...rest) {
+      if (file === pidFilePath) {
+        readAttempts++;
+        if (readAttempts < 3) {
+          const err = new Error('ENOENT (simulated)');
+          err.code = 'ENOENT';
+          throw err;
+        }
+        return String(process.pid); // this test process's own, definitely-alive pid
+      }
+      return origReadFileSync.call(fs, file, ...rest);
+    };
+
+    const prevEnv = process.env.JOBS_DB_PATH;
+    process.env.JOBS_DB_PATH = racyDbPath;
+    delete require.cache[require.resolve('../src/db/schema')];
+    const freshSchema = require('../src/db/schema');
+
+    try {
+      await assert.rejects(
+        freshSchema.initializeDatabase(),
+        /already in use by another process/,
+        'a pid file that appears within the retry budget must be honored, not raced past'
+      );
+      assert.ok(readAttempts >= 3, `expected at least 3 read attempts before the pid became visible, got ${readAttempts}`);
+    } finally {
+      fs.readFileSync = origReadFileSync;
+      delete require.cache[require.resolve('../src/db/schema')];
+      process.env.JOBS_DB_PATH = prevEnv;
+      fs.rmSync(racyLockDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a lock dir whose pid file never appears (holder crashed between mkdirSync and the pid write) is still reclaimed, not stuck forever', async () => {
+    const racyDbPath = path.join(tmpDir, 'racy-orphan-test.db');
+    const racyLockDir = `${racyDbPath}.lock`;
+    fs.mkdirSync(racyLockDir); // simulate: holder crashed after mkdirSync, before ever writing pid
+
+    const prevEnv = process.env.JOBS_DB_PATH;
+    process.env.JOBS_DB_PATH = racyDbPath;
+    delete require.cache[require.resolve('../src/db/schema')];
+    const freshSchema = require('../src/db/schema');
+
+    try {
+      await freshSchema.initializeDatabase(); // must not hang or throw — genuinely orphaned, reclaim it
+      assert.ok(fs.existsSync(path.join(racyLockDir, 'pid')), 'the reclaiming process must write its own pid');
+    } finally {
+      delete require.cache[require.resolve('../src/db/schema')];
+      process.env.JOBS_DB_PATH = prevEnv;
+      fs.rmSync(racyLockDir, { recursive: true, force: true });
+    }
+  });
 });
