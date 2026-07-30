@@ -130,11 +130,21 @@ const MIN_SCRAPE_INTERVAL_MS = 60000; // 1 minute
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// CORS middleware
+// CORS middleware. The dashboard is served same-origin by this same process
+// (see the '/' route below), so a browser visiting it never needs a CORS
+// grant at all. ALLOWED_ORIGIN exists only for the case of a separate
+// frontend (e.g. a dev server on another port) that legitimately needs
+// cross-origin access; left unset, no Access-Control-Allow-Origin header is
+// ever sent, so a same-site-only browser (any origin, including a page an
+// attacker got the user to open) fails CORS preflight on every
+// state-changing request and the browser refuses to send it.
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || null;
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (ALLOWED_ORIGIN && req.headers.origin === ALLOWED_ORIGIN) {
+    res.header('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Token');
+  }
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -144,6 +154,27 @@ app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'");
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  next();
+});
+
+// Shared-secret auth for state-changing requests. Off by default (no
+// friction for the common case: a single local user hitting the dashboard
+// on localhost), but set API_TOKEN to require every POST/PATCH/DELETE to
+// carry a matching X-API-Token header — e.g. when exposing this server
+// beyond localhost, since it holds real personal data and a paid LLM
+// endpoint. CORS restriction alone only stops *browser* cross-origin
+// requests; it does nothing against a direct curl/script request, which is
+// what this closes.
+const API_TOKEN = process.env.API_TOKEN || null;
+if (!API_TOKEN) {
+  console.warn('API_TOKEN is not set: mutating API routes are unauthenticated. Set API_TOKEN to require a shared secret on POST/PATCH/DELETE requests.');
+}
+const MUTATING_METHODS = new Set(['POST', 'PATCH', 'DELETE']);
+app.use((req, res, next) => {
+  if (!API_TOKEN || !MUTATING_METHODS.has(req.method)) return next();
+  if (req.header('X-API-Token') !== API_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   next();
 });
 
