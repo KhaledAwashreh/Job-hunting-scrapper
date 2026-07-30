@@ -148,6 +148,19 @@ const resumeUpload = multer({
 const MIN_SCRAPE_INTERVAL_MS = 60000; // 1 minute
 
 app.use(express.json());
+
+// Security headers middleware. Registered before express.static (#24) so
+// static assets (styles.css, countries.json, etc.) carry the same
+// Content-Security-Policy/X-Frame-Options/X-Content-Type-Options headers as
+// every other response instead of short-circuiting out of express.static
+// before ever reaching this middleware.
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 // CORS middleware. The dashboard is served same-origin by this same process
@@ -166,14 +179,6 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Token');
   }
   if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
-
-// Security headers middleware
-app.use((req, res, next) => {
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'");
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   next();
 });
 
@@ -613,8 +618,43 @@ app.delete('/api/profiles/:id', (req, res) => {
 });
 
 // ===== Tailored Resumes API =====
+
+// Rate limiting for the resume-tailor endpoint (#23). It invokes a paid
+// Anthropic LLM call on every request with no other throttle, unlike
+// POST /api/scrape/run above -- a bug (retry loop, double-click) or an
+// unauthenticated caller (see the CORS/API_TOKEN comments earlier in this
+// file) could otherwise run up unbounded LLM spend. Simple in-process
+// sliding-window counter keyed by client IP; a Map of timestamps is enough
+// for a single-user local tool and needs no new dependency. TAILOR_RATE_LIMIT_MAX
+// of 10 requests per minute is generous for normal interactive use (a person
+// clicking "Tailor" a few times while comparing profiles/versions) but caps
+// runaway cost from automation or abuse.
+const TAILOR_RATE_LIMIT_MAX = 10;
+const TAILOR_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const tailorRequestLog = new Map(); // ip -> array of request timestamps (ms)
+
+function tailorRateLimit(req, res, next) {
+  const key = req.ip || 'unknown';
+  const now = Date.now();
+  const windowStart = now - TAILOR_RATE_LIMIT_WINDOW_MS;
+  const timestamps = (tailorRequestLog.get(key) || []).filter(t => t > windowStart);
+
+  if (timestamps.length >= TAILOR_RATE_LIMIT_MAX) {
+    const retryAfter = Math.ceil((timestamps[0] + TAILOR_RATE_LIMIT_WINDOW_MS - now) / 1000);
+    tailorRequestLog.set(key, timestamps);
+    return res.status(429).json({
+      error: 'Too many resume-tailoring requests. Please wait before trying again.',
+      retryAfter
+    });
+  }
+
+  timestamps.push(now);
+  tailorRequestLog.set(key, timestamps);
+  next();
+}
+
 // Generate a new tailored resume for a position
-app.post('/api/positions/:positionId/tailor', async (req, res) => {
+app.post('/api/positions/:positionId/tailor', tailorRateLimit, async (req, res) => {
   try {
     const { positionId } = req.params;
     const { profileId } = req.body;
@@ -990,16 +1030,43 @@ startup().then(() => {
   function gracefulShutdown() {
     console.log('\nGraceful shutdown initiated...');
 
-    // Stop accepting new requests
-    server.close(() => {
-      console.log('HTTP server closed');
-    });
+    // #25: previously process.exit(0) ran synchronously right after issuing
+    // server.close(), without ever awaiting its callback -- under a real
+    // SIGTERM the process exited before in-flight requests finished, dropping
+    // roughly a third of them in testing. Now we track both "HTTP server
+    // fully closed" and "no scrape still running" and only exit once both are
+    // true, with a hard timeout as a fallback for requests/scrapes that never
+    // finish.
+    let serverClosed = false;
+    let scraperDone = false;
+    let forced = false;
 
-    // Wait for ongoing scrape to finish (with timeout)
     const shutdownTimeout = setTimeout(() => {
-      console.error('Forced shutdown: scrape took too long');
+      forced = true;
+      console.error('Forced shutdown: server close / scrape took too long');
       process.exit(1);
     }, 30000); // 30 second timeout
+
+    function maybeExit() {
+      if (forced || !serverClosed || !scraperDone) return;
+      clearTimeout(shutdownTimeout);
+      console.log('Shutting down');
+      process.exit(0);
+    }
+
+    // Stop accepting new connections; wait for in-flight requests to finish.
+    server.close(() => {
+      serverClosed = true;
+      console.log('HTTP server closed');
+      maybeExit();
+    });
+    // Idle keep-alive sockets (no request in progress) would otherwise sit
+    // open until the keep-alive timeout and delay the close() callback above
+    // for no reason; closing them immediately doesn't affect in-flight
+    // requests, which keep their own sockets until their response is sent.
+    if (typeof server.closeIdleConnections === 'function') {
+      server.closeIdleConnections();
+    }
 
     // Check scraper status
     const status = getRunStatus();
@@ -1008,14 +1075,14 @@ startup().then(() => {
       const waitInterval = setInterval(() => {
         if (!getRunStatus().running) {
           clearInterval(waitInterval);
-          clearTimeout(shutdownTimeout);
-          console.log('Scrape completed, shutting down');
-          process.exit(0);
+          scraperDone = true;
+          console.log('Scrape completed');
+          maybeExit();
         }
       }, 1000);
     } else {
-      clearTimeout(shutdownTimeout);
-      process.exit(0);
+      scraperDone = true;
+      maybeExit();
     }
   }
 }).catch(error => {
