@@ -56,6 +56,21 @@ function isValidHttpUrl(urlStr) {
   }
 }
 
+// Build a safe `Content-Disposition: attachment` header value from an untrusted
+// filename (e.g. one derived from a scraped job title). Strips control characters
+// (CR/LF etc., which would otherwise let a title inject arbitrary headers or crash
+// res.setHeader) and provides both a legacy ASCII-only filename="..." and a
+// percent-encoded filename*=UTF-8''... per RFC 6266, so non-ASCII titles still
+// round-trip for clients that support the extended form.
+function contentDispositionHeader(filename) {
+  const noControlChars = String(filename).replace(/[\x00-\x1F\x7F]/g, '');
+  const asciiFallback = noControlChars
+    .replace(/[^\x20-\x7E]/g, '_') // non-ASCII -> underscore
+    .replace(/["\\]/g, '_'); // quotes/backslashes would break the quoted-string form
+  const encoded = encodeURIComponent(noControlChars);
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 // Resolve a user-supplied resume filename to an absolute path guaranteed to
 // live inside RESUMES_DIR, or return null if it does not.
 //
@@ -285,6 +300,10 @@ app.patch('/api/positions/:id/status', (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
+    if (!getPositionById(id)) {
+      return res.status(404).json({ error: 'Position not found' });
+    }
+
     updatePositionStatus(id, status);
     const updated = getPositionById(id);
     res.json(updated);
@@ -320,6 +339,10 @@ app.patch('/api/companies/:id', (req, res) => {
     const { id } = req.params;
     const { name, country, career_url, platform, platform_slug, api_url, active } = req.body;
 
+    if (!getCompanyById(id)) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
     // Build updates object with only provided fields
     const updates = {};
     if (name !== undefined) updates.name = name;
@@ -349,6 +372,9 @@ app.patch('/api/companies/:id', (req, res) => {
 app.delete('/api/companies/:id', (req, res) => {
   try {
     const { id } = req.params;
+    if (!getCompanyById(id)) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
     deleteCompany(id);
     res.json({ success: true, message: 'Company deleted' });
   } catch (error) {
@@ -520,6 +546,10 @@ app.patch('/api/profiles/:id', validateProfileInput, (req, res) => {
     const { id } = req.params;
     const { name, resume_file, job_types, secondary_category, seniority_level, years_of_experience = [], work_location_preference = [] } = req.body;
 
+    if (!getProfileById(id)) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
     updateProfile(id, name, resume_file, job_types, secondary_category || null, seniority_level || null, years_of_experience, work_location_preference);
     const updated = getProfileById(id);
     try {
@@ -541,6 +571,9 @@ app.patch('/api/profiles/:id', validateProfileInput, (req, res) => {
 app.delete('/api/profiles/:id', (req, res) => {
   try {
     const { id } = req.params;
+    if (!getProfileById(id)) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
     deleteProfile(id);
     res.json({ message: 'Profile deleted' });
   } catch (error) {
@@ -679,6 +712,9 @@ app.get('/api/tailored-resumes/:id', (req, res) => {
 app.delete('/api/tailored-resumes/:id', (req, res) => {
   try {
     const { id } = req.params;
+    if (!getTailoredResumeById(id)) {
+      return res.status(404).json({ error: 'Tailored resume not found' });
+    }
     deleteTailoredResume(id);
     res.json({ message: 'Tailored resume deleted' });
   } catch (error) {
@@ -701,7 +737,7 @@ app.get('/api/tailored-resumes/:id/download', async (req, res) => {
 
     if (format === 'txt') {
       res.setHeader('Content-Type', 'text/plain');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', contentDispositionHeader(filename));
       return res.send(tailoredResume.tailored_text);
     }
 
@@ -747,7 +783,7 @@ app.get('/api/tailored-resumes/:id/download', async (req, res) => {
 
       const buffer = await Packer.toBuffer(doc);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', contentDispositionHeader(filename));
       return res.send(buffer);
     }
 
@@ -798,7 +834,7 @@ app.get('/api/tailored-resumes/:id/download', async (req, res) => {
 
       const pdfBytes = await pdfDoc.save();
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', contentDispositionHeader(filename));
       return res.send(Buffer.from(pdfBytes));
     }
 
