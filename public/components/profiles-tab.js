@@ -97,13 +97,13 @@ const ProfilesTab = {
       
       html += `
         <div class="accordion-item">
-          <div class="accordion-header" onclick="ProfilesTab.toggleAccordion(${idx})">
+          <button type="button" class="accordion-header" id="accordion-header-${idx}" onclick="ProfilesTab.toggleAccordion(${idx})" aria-expanded="false" aria-controls="accordion-${idx}">
             <div class="flex-1">
               <h4 class="mb-5">${escapeHtml(profile.name)}</h4>
               <small class="text-muted">${escapeHtml(jobTypesStr)}</small>
             </div>
             <span class="accordion-icon">▼</span>
-          </div>
+          </button>
           <div class="accordion-content" id="accordion-${idx}">
             <div class="grid-2">
               <div>
@@ -148,7 +148,9 @@ const ProfilesTab = {
   toggleAccordion(idx) {
     const content = document.getElementById(`accordion-${idx}`);
     if (content) {
-      content.classList.toggle('active');
+      const isOpen = content.classList.toggle('active');
+      const header = document.getElementById(`accordion-header-${idx}`);
+      if (header) header.setAttribute('aria-expanded', String(isOpen));
     }
   },
 
@@ -167,6 +169,8 @@ const ProfilesTab = {
     document.getElementById('profileForm').reset();
     document.getElementById('profileForm').setAttribute('data-profile-id', '');
     document.getElementById('profileSeniority').value = '';
+    // A brand-new profile has no resume on file yet, so a file must be chosen.
+    document.getElementById('profileResume').required = true;
     modal.classList.add('open');
   },
 
@@ -175,7 +179,15 @@ const ProfilesTab = {
 
     const name = document.getElementById('profileName').value;
     const resumeFile = document.getElementById('profileResume');
-    let resume_file = 'resume.pdf';
+    const profileId = document.getElementById('profileForm').getAttribute('data-profile-id');
+
+    // When editing without re-selecting a file, keep the resume already on
+    // record instead of overwriting it with the 'resume.pdf' placeholder
+    // (issue #14). Only a genuinely new profile falls back to the placeholder,
+    // and the file input is required in that case so this line is unreachable
+    // without a real upload happening below.
+    const existingProfile = profileId ? this.profiles.find(p => String(p.id) === String(profileId)) : null;
+    let resume_file = existingProfile ? existingProfile.resume_file : 'resume.pdf';
 
     // Upload resume file first if selected
     if (resumeFile.files && resumeFile.files.length > 0) {
@@ -214,7 +226,6 @@ const ProfilesTab = {
 
     const seniority_level = document.getElementById('profileSeniority').value || null;
     const secondary_category = document.getElementById('profileSecondary').value;
-    const profileId = document.getElementById('profileForm').getAttribute('data-profile-id');
 
     if (!name || job_types.length === 0) {
       showError('Name and job types are required');
@@ -262,10 +273,14 @@ const ProfilesTab = {
     document.getElementById('profileSecondary').value = profile.secondary_category || '';
     document.getElementById('profileSeniority').value = profile.seniority_level || '';
     
-    // Clear file input for edit mode
+    // Clear file input for edit mode. The profile already has a resume on
+    // file, so re-selecting one is optional here (issue #14) — `required`
+    // would otherwise block the native form submit before saveProfile() ever
+    // runs, with no visible error.
     const fileInput = document.getElementById('profileResume');
     fileInput.value = '';
-    
+    fileInput.required = false;
+
     // Set multi-select for job types
     const jobTypesSelect = document.getElementById('profileJobTypes');
     Array.from(jobTypesSelect.options).forEach(opt => {

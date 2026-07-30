@@ -29,6 +29,33 @@ function safeHref(value) {
   return '#';
 }
 
+// Whole-token, case-insensitive, bidirectional country match (issue #13).
+//
+// The country checkboxes carry ISO codes (e.g. "IE") as their `value`, from
+// `/countries.json` — but `company.country` is free text entered via
+// `prompt()` (see `showCompanyModal`/`editCompany` below) and validated
+// server-side only as "1-100 characters" (`server.js`), e.g. "Ireland" or
+// "Dublin, Ireland", never an ISO code. Comparing the checkbox value directly
+// against `company.country` therefore never matches anything.
+//
+// The fix is to compare display names instead of codes, using the same
+// whole-token matching approach as `countryTokenMatch` in
+// `src/utils/jobFieldExtractor.js` (which solves the identical "free-text
+// country field" problem for job/profile matching). That helper lives in a
+// Node/CommonJS module and these are plain, unbundled browser `<script>`
+// tags with no `require()`, so the small matcher is duplicated here rather
+// than shared.
+function wholeTokenIncludes(haystack, needle) {
+  if (!haystack || !needle) return false;
+  const escaped = String(needle).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'iu');
+  return regex.test(String(haystack));
+}
+
+function countryTokenMatch(a, b) {
+  return wholeTokenIncludes(a, b) || wholeTokenIncludes(b, a);
+}
+
 const CompaniesCountries = {
   countries: [],
   companies: [],
@@ -157,8 +184,14 @@ const CompaniesCountries = {
 
     let filteredCompanies = this.companies;
     if (this.selectedCountries.size > 0) {
-      filteredCompanies = this.companies.filter(c => 
-        this.selectedCountries.has(c.country)
+      // Resolve the selected ISO codes to their display names (the checkbox
+      // `value` is a code, but `company.country` is free text — see
+      // `countryTokenMatch` above) and match against those names.
+      const selectedNames = this.countries
+        .filter(country => this.selectedCountries.has(country.code))
+        .map(country => country.name);
+      filteredCompanies = this.companies.filter(c =>
+        selectedNames.some(name => countryTokenMatch(c.country, name))
       );
     }
 
