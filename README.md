@@ -229,6 +229,27 @@ SCORING_PROVIDER=ollama      # Use local model (free)
 
 No code changes needed to switch providers.
 
+## Testing
+
+```bash
+npm test        # unit tests — fast, no browser, no database
+npm run test:e2e  # end-to-end — drives a real browser against a real server
+```
+
+**The E2E suite never touches your `jobs.db`.** Every run points `JOBS_DB_PATH` at a throwaway
+file in a temp directory, seeds it with fixtures, and asserts that the real database was not
+created or modified.
+
+E2E needs a Chrome or Chromium binary. It uses the system `/usr/bin/google-chrome` if present.
+(`npx playwright install chromium` fails on Ubuntu 26.04 — playwright 1.60 ships no build for it.)
+If no browser is found the suite skips with a message rather than failing.
+
+The UI has DOM-structure snapshots under `test/e2e/__snapshots__/`. After an intentional UI change:
+
+```bash
+UPDATE_SNAPSHOTS=1 npm run test:e2e
+```
+
 ## License
 
 MIT — built with Node.js, Express, sql.js, Playwright, Puppeteer, Firecrawl, @anthropic-ai/sdk.
