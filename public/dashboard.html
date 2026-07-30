@@ -402,30 +402,30 @@
     </header>
 
     <div class="tabs">
-      <button class="tab-button" data-tab="positions">Positions</button>
-      <button class="tab-button" data-tab="companies">Companies</button>
-      <button class="tab-button" data-tab="profiles">Profiles</button>
-      <button class="tab-button" data-tab="runs">Run Log</button>
+      <button class="tab-button" data-tab="positions" data-testid="tab-positions">Positions</button>
+      <button class="tab-button" data-tab="companies" data-testid="tab-companies">Companies</button>
+      <button class="tab-button" data-tab="profiles" data-testid="tab-profiles">Profiles</button>
+      <button class="tab-button" data-tab="runs" data-testid="tab-runs">Run Log</button>
     </div>
 
     <!-- TAB 1: POSITIONS -->
-    <div id="positions" class="tab-content active">
+    <div id="positions" class="tab-content active" data-testid="panel-positions">
       <h2>Job Positions</h2>
       <div class="filters">
-        <select id="countryFilter">
+        <select id="countryFilter" data-testid="filter-country">
           <option value="">All Countries</option>
         </select>
-        <select id="statusFilter">
+        <select id="statusFilter" data-testid="filter-status">
           <option value="">All Statuses</option>
           <option value="new">New</option>
           <option value="applied">Applied</option>
           <option value="rejected">Rejected</option>
           <option value="accepted">Accepted</option>
         </select>
-        <select id="jobTypeFilter">
+        <select id="jobTypeFilter" data-testid="filter-job-type">
           <option value="">All Job Types</option>
         </select>
-        <button id="refreshPositionsBtn">Refresh</button>
+        <button id="refreshPositionsBtn" data-testid="positions-refresh">Refresh</button>
       </div>
       
       <div class="filters" style="margin-top: 15px;">
@@ -440,35 +440,35 @@
         </select>
       </div>
       
-      <div id="positionsContainer">
-        <div class="empty-state">Loading...</div>
+      <div id="positionsContainer" data-testid="positions-list">
+        <div class="empty-state" data-testid="empty-state">Loading...</div>
       </div>
     </div>
 
     <!-- TAB 2: COMPANIES -->
-    <div id="companies" class="tab-content">
+    <div id="companies" class="tab-content" data-testid="panel-companies">
       <h2>Companies</h2>
 
       <h3>Add New Company</h3>
-      <form id="addCompanyForm" onsubmit="addCompany(event)">
+      <form id="addCompanyForm" data-testid="company-form" onsubmit="addCompany(event)">
         <div class="form-row">
           <div class="form-group">
             <label>Company Name</label>
-            <input type="text" id="companyName" required>
+            <input type="text" id="companyName" data-testid="company-name" required>
           </div>
           <div class="form-group">
             <label>Country</label>
-            <input type="text" id="companyCountry" placeholder="e.g., Netherlands" required>
+            <input type="text" id="companyCountry" data-testid="company-country" placeholder="e.g., Netherlands" required>
           </div>
         </div>
         <div class="form-group">
           <label>Career Page URL</label>
-          <input type="url" id="careerUrl" required>
+          <input type="url" id="careerUrl" data-testid="company-career-url" required>
         </div>
         <div class="form-row">
           <div class="form-group">
             <label>Platform</label>
-            <select id="platform">
+            <select id="platform" data-testid="company-platform">
               <option value="unknown">Unknown</option>
               <option value="custom">Custom</option>
               <option value="greenhouse">Greenhouse</option>
@@ -483,20 +483,25 @@
         <div id="addCompanyMessage"></div>
       </form>
 
+      <h3 style="margin-top: 30px;">Filter by Country</h3>
+      <div id="countriesContainer" data-testid="countries-container">
+        <div class="empty-state" data-testid="empty-state">Loading countries...</div>
+      </div>
+
       <h3 style="margin-top: 30px;">Active Companies</h3>
-      <div id="companiesTableContainer">
-        <div class="empty-state">Loading...</div>
+      <div id="companiesTableContainer" data-testid="companies-table">
+        <div class="empty-state" data-testid="empty-state">Loading...</div>
       </div>
     </div>
 
     <!-- TAB 3: PROFILES -->
-    <div id="profiles" class="tab-content">
+    <div id="profiles" class="tab-content" data-testid="panel-profiles">
       <h2>Job Profiles & Resume Matching</h2>
       
       <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
         <div>
           <label style="font-weight: bold; margin-right: 10px;">Global Time Window:</label>
-          <select id="timeWindowSelect" style="padding: 8px 12px; border-radius: 4px;">
+          <select id="timeWindowSelect" data-testid="time-window" style="padding: 8px 12px; border-radius: 4px;">
             <option value="7">Last 7 days</option>
             <option value="30" selected>Last 30 days</option>
             <option value="90">Last 90 days</option>
@@ -504,21 +509,21 @@
             <option value="all">All time</option>
           </select>
         </div>
-        <button id="addProfileBtn" style="padding: 8px 16px;">+ Add Profile</button>
+        <button id="addProfileBtn" data-testid="profile-add" style="padding: 8px 16px;">+ Add Profile</button>
       </div>
 
-      <div id="profilesAccordion">
-        <div class="empty-state">Loading profiles...</div>
+      <div id="profilesAccordion" data-testid="profiles-list">
+        <div class="empty-state" data-testid="empty-state">Loading profiles...</div>
       </div>
     </div>
 
     <!-- TAB 4: RUN LOG -->
-    <div id="runs" class="tab-content">
+    <div id="runs" class="tab-content" data-testid="panel-runs">
       <h2>Scraper Runs</h2>
-      <button onclick="triggerScrape()" id="scrapeButton">Run Scraper Now</button>
+      <button onclick="triggerScrape()" id="scrapeButton" data-testid="scrape-run">Run Scraper Now</button>
       <span id="scrapeStatus"></span>
-      <div id="runsContainer" style="margin-top: 20px;">
-        <div class="empty-state">Loading...</div>
+      <div id="runsContainer" data-testid="runs-list" style="margin-top: 20px;">
+        <div class="empty-state" data-testid="empty-state">Loading...</div>
       </div>
     </div>
   </div>
@@ -527,7 +532,7 @@
   <div id="profileModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
     <div style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 550px; max-height: 90vh; overflow-y: auto;">
       <h3 id="profileFormTitle">Add Profile</h3>
-      <form id="profileForm" onsubmit="ProfilesTab.saveProfile(event)">
+      <form id="profileForm" data-testid="profile-form" onsubmit="ProfilesTab.saveProfile(event)">
         <div class="form-group">
           <label>Profile Name</label>
           <input type="text" id="profileName" required>
@@ -698,7 +703,7 @@
     function renderRuns() {
       const container = document.getElementById('runsContainer');
       if (state.runs.length === 0) {
-        container.innerHTML = '<div class="empty-state">No scrape runs yet</div>';
+        container.innerHTML = '<div class="empty-state" data-testid="empty-state">No scrape runs yet</div>';
         return;
       }
 
@@ -846,8 +851,10 @@
       setTimeout(() => msg.remove(), 3000);
     }
 
-    // Initial load
-    loadPositions();
+    // No initial load call here on purpose. This inline script runs before the
+    // component scripts at the bottom of <body> are parsed, so calling
+    // loadPositions() at this point threw "PositionsTab is not defined" on every
+    // page load. PositionsTab.init() already loads positions on DOMContentLoaded.
   </script>
 
   <!-- Component Scripts -->

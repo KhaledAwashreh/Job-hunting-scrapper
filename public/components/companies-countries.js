@@ -1,6 +1,12 @@
 /**
  * Companies Countries Component
- * Integrates REST Countries API for multi-select country filtering
+ * Multi-select country filtering, backed by a local country list.
+ *
+ * The list is served from /countries.json rather than an external API: the
+ * app's CSP sets `connect-src 'self'`, so any cross-origin fetch is blocked
+ * outright. The previous version called restcountries.com, which meant the
+ * request always failed and a hardcoded 15-country fallback was always used —
+ * and that fallback omitted Ireland and Portugal, so neither could be selected.
  */
 
 const CompaniesCountries = {
@@ -16,44 +22,32 @@ const CompaniesCountries = {
 
   async loadCountries() {
     try {
-      const res = await fetch('https://restcountries.com/v3.1/all');
-      if (!res.ok) throw new Error('Failed to fetch countries');
-      
+      const res = await fetch('/countries.json');
+      if (!res.ok) throw new Error(`countries.json responded ${res.status}`);
+
       const data = await res.json();
-      this.countries = data
-        .map(c => ({
-          code: c.cca2,
-          name: c.name.common,
-          flag: c.flag
-        }))
+      this.countries = (data.countries || []).slice()
         .sort((a, b) => a.name.localeCompare(b.name));
-      
+
+      if (this.countries.length === 0) throw new Error('countries.json was empty');
+
       this.renderCountryCheckboxes();
     } catch (error) {
-      console.warn('Could not load REST Countries API, using fallback:', error);
-      this.useFallbackCountries();
+      // Show the failure instead of silently substituting a partial list —
+      // a short fallback that looks plausible is what hid this bug before.
+      console.error('Could not load the country list:', error);
+      this.renderCountryError(error);
     }
   },
 
-  useFallbackCountries() {
-    this.countries = [
-      { code: 'US', name: 'United States', flag: '🇺🇸' },
-      { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
-      { code: 'CA', name: 'Canada', flag: '🇨🇦' },
-      { code: 'AU', name: 'Australia', flag: '🇦🇺' },
-      { code: 'DE', name: 'Germany', flag: '🇩🇪' },
-      { code: 'FR', name: 'France', flag: '🇫🇷' },
-      { code: 'NL', name: 'Netherlands', flag: '🇳🇱' },
-      { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
-      { code: 'IN', name: 'India', flag: '🇮🇳' },
-      { code: 'JP', name: 'Japan', flag: '🇯🇵' },
-      { code: 'ES', name: 'Spain', flag: '🇪🇸' },
-      { code: 'IT', name: 'Italy', flag: '🇮🇹' },
-      { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
-      { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
-      { code: 'ZA', name: 'South Africa', flag: '🇿🇦' },
-    ];
-    this.renderCountryCheckboxes();
+  renderCountryError(error) {
+    const container = document.getElementById('countriesContainer');
+    if (!container) return;
+    container.innerHTML =
+      '<div class="countries-error" data-testid="countries-error" role="alert">' +
+      'Could not load the country list. ' +
+      String(error && error.message ? error.message : error) +
+      '</div>';
   },
 
   renderCountryCheckboxes() {
@@ -66,17 +60,17 @@ const CompaniesCountries = {
     let html = `
       <div class="countries-grid">
         <div class="select-controls" style="margin-bottom: 15px;">
-          <button id="selectAllCountries" style="padding: 8px 12px; margin-right: 5px;">Select All</button>
-          <button id="clearAllCountries" style="padding: 8px 12px;">Clear All</button>
-          <span id="countryCount" style="margin-left: 15px; font-weight: bold;">Selected: 0</span>
+          <button id="selectAllCountries" data-testid="countries-select-all" style="padding: 8px 12px; margin-right: 5px;">Select All</button>
+          <button id="clearAllCountries" data-testid="countries-clear-all" style="padding: 8px 12px;">Clear All</button>
+          <span id="countryCount" data-testid="countries-count" style="margin-left: 15px; font-weight: bold;">Selected: 0</span>
         </div>
-        <div id="countryCheckboxes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 10px; border-radius: 4px; background: #f8f9fa;">
+        <div id="countryCheckboxes" data-testid="countries-checkboxes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 10px; border-radius: 4px; background: #f8f9fa;">
     `;
 
     this.countries.forEach(country => {
       const isSelected = this.selectedCountries.has(country.code);
       html += `
-        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px; border-radius: 4px; background: ${isSelected ? '#e3f2fd' : 'transparent'};">
+        <label data-testid="country-option" data-country-code="${country.code}" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px; border-radius: 4px; background: ${isSelected ? '#e3f2fd' : 'transparent'};">
           <input type="checkbox" class="country-checkbox" value="${country.code}" data-name="${country.name}" ${isSelected ? 'checked' : ''}>
           <span>${country.flag}</span>
           <span>${country.name}</span>
@@ -149,7 +143,7 @@ const CompaniesCountries = {
     }
 
     if (filteredCompanies.length === 0) {
-      container.innerHTML = '<div class="empty-state">No companies found</div>';
+      container.innerHTML = '<div class="empty-state" data-testid="empty-state">No companies found</div>';
       return;
     }
 

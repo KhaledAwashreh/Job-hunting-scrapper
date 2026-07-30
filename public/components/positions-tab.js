@@ -69,7 +69,7 @@ const PositionsTab = {
     });
     
     if (filtered.length === 0) {
-      container.innerHTML = '<div class="empty-state">No positions found with selected filters</div>';
+      container.innerHTML = '<div class="empty-state" data-testid="empty-state">No positions found with selected filters</div>';
       return;
     }
 
@@ -107,15 +107,15 @@ const PositionsTab = {
       const levels = this.parseArray(pos.seniority_level);
 
        html += `
-        <tr>
-          <td><span class="badge ${scoreClass}">${pos.match_score}</span></td>
-          <td>${pos.country || '—'}</td>
-          <td>${pos.company_name || '—'}</td>
-          <td>${pos.title}</td>
+        <tr data-testid="position-row" data-position-id="${pos.id}">
+          <td><span class="badge ${scoreClass}" data-testid="position-score">${pos.match_score}</span></td>
+          <td data-testid="position-country">${pos.country || '—'}</td>
+          <td data-testid="position-company">${pos.company_name || '—'}</td>
+          <td data-testid="position-title">${pos.title}</td>
           <td>${pos.job_type || '—'}</td>
           <td>${locationTypes.join(', ') || '—'}</td>
           <td>${levels.join(', ') || '—'}</td>
-          <td class="link-cell"><a href="${pos.link}" target="_blank">View</a></td>
+          <td class="link-cell"><a href="${pos.link}" target="_blank" data-testid="position-link">View</a></td>
           <td><span class="badge ${statusBadgeClass}">${pos.status}</span></td>
           <td class="actions-cell">
             <button class="btn-change" onclick="PositionsTab.updateStatus(${pos.id}, '${pos.status}')">Change</button>
@@ -147,13 +147,13 @@ const PositionsTab = {
           const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
            
           html += `
-            <div style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
+            <div data-testid="position-row" data-position-id="${pos.id}" style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
               <div style="display: flex; gap: 10px; align-items: center; font-size: 14px; flex-wrap: wrap;">
-                <span class="badge ${scoreClass}">${pos.match_score}</span>
-                <strong>${pos.title}</strong>
-                <span style="color: #999;">${pos.company_name}</span>
-                <span style="font-size: 12px; color: #666;">${pos.country}</span>
-                <a href="${pos.link}" target="_blank" style="font-size: 12px;">View</a>
+                <span class="badge ${scoreClass}" data-testid="position-score">${pos.match_score}</span>
+                <strong data-testid="position-title">${pos.title}</strong>
+                <span data-testid="position-company" style="color: #999;">${pos.company_name}</span>
+                <span data-testid="position-country" style="font-size: 12px; color: #666;">${pos.country}</span>
+                <a href="${pos.link}" target="_blank" data-testid="position-link" style="font-size: 12px;">View</a>
                 <span class="badge ${statusBadgeClass}" style="margin-left: auto;">${pos.status}</span>
                 <button style="padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.tailorResume(${pos.id})">
                   Tailor Resume
@@ -169,13 +169,13 @@ const PositionsTab = {
           const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
            
           html += `
-            <div style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
+            <div data-testid="position-row" data-position-id="${pos.id}" style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
               <div style="display: flex; gap: 10px; align-items: center; font-size: 14px; flex-wrap: wrap;">
-                <span class="badge ${scoreClass}">${pos.match_score}</span>
-                <strong>${pos.title}</strong>
-                <span style="color: #999;">${pos.company_name}</span>
-                <span style="font-size: 12px; color: #666;">${pos.country}</span>
-                <a href="${pos.link}" target="_blank" style="font-size: 12px;">View</a>
+                <span class="badge ${scoreClass}" data-testid="position-score">${pos.match_score}</span>
+                <strong data-testid="position-title">${pos.title}</strong>
+                <span data-testid="position-company" style="color: #999;">${pos.company_name}</span>
+                <span data-testid="position-country" style="font-size: 12px; color: #666;">${pos.country}</span>
+                <a href="${pos.link}" target="_blank" data-testid="position-link" style="font-size: 12px;">View</a>
                 <span class="badge ${statusBadgeClass}" style="margin-left: auto;">${pos.status}</span>
                 <button style="padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.tailorResume(${pos.id})">
                   Tailor Resume

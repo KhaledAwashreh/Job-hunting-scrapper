@@ -4,7 +4,10 @@ const path = require('path');
 
 // sql.js is a pure JavaScript implementation of SQLite
 // No native compilation required - works on all platforms
-const dbPath = path.join(__dirname, '../../jobs.db');
+// Defaults to the app's real database. JOBS_DB_PATH overrides it so tests can
+// point at an isolated temp file — the real jobs.db must never be opened,
+// written or created by a test run.
+const dbPath = process.env.JOBS_DB_PATH || path.join(__dirname, '../../jobs.db');
 let database = null;
 
 async function initializeDatabase() {

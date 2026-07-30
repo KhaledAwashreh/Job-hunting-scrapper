@@ -73,7 +73,7 @@ const ProfilesTab = {
     const container = document.getElementById('profilesAccordion');
     
     if (this.profiles.length === 0) {
-      container.innerHTML = '<div class="empty-state">No profiles yet. Create one to start matching jobs!</div>';
+      container.innerHTML = '<div class="empty-state" data-testid="empty-state">No profiles yet. Create one to start matching jobs!</div>';
       return;
     }
 
