@@ -1,9 +1,11 @@
 const initSqlJs = require('sql.js');
 const fs = require('fs');
-const path = require('path');
+// Reuse schema.js's dbPath instead of re-deriving the path here, so this
+// script honours JOBS_DB_PATH with exactly the same precedence as the rest
+// of the app — one source of truth for "where is the database", not two.
+const { dbPath } = require('./src/db/schema');
 (async () => {
   const SQL = await initSqlJs();
-  const dbPath = path.join(__dirname, 'jobs.db');
   if (!fs.existsSync(dbPath)) {
     console.log('Database not found');
     return;
