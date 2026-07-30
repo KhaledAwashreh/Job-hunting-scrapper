@@ -9,15 +9,18 @@ div.tab-content[panel-profiles]
   div[profiles-list]
     div.accordion-item  ×2
       div.accordion-header
-        div
-          h4
-          small
+        div.flex-1
+          h4.mb-5
+          small.text-muted
         span.accordion-icon
       div.accordion-content
-        div
-          div  ×5
+        div.grid-2
+          div  ×4
             strong
-            div
-        div
-          button
-          button.danger
+            div.hint-sm
+          div.span-full
+            strong
+            div.hint-sm
+        div.row-actions
+          button.flex-1
+          button.danger.flex-1

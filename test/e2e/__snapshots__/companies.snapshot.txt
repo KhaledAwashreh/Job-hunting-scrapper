@@ -22,12 +22,12 @@ div.tab-content[panel-companies]
   h3.u-mt-30
   div[countries-container]
     div.countries-grid
-      div.select-controls
-        button[countries-select-all]
-        button[countries-clear-all]
-        span[countries-count]
-      div[countries-checkboxes]
-        label[country-option]  ×280
+      div.mb-15.select-controls
+        button.btn-md-gap[countries-select-all]
+        button.btn-md[countries-clear-all]
+        span.countries-count-label[countries-count]
+      div.countries-grid-inner[countries-checkboxes]
+        label.country-row[country-option]  ×280
           input.country-checkbox
           span  ×2
   h3.u-mt-30
@@ -43,4 +43,5 @@ div.tab-content[panel-companies]
             a
           td
           td
-            button  ×2
+            button.btn-sm-gap
+            button.btn-sm

@@ -59,18 +59,18 @@ const CompaniesCountries = {
 
     let html = `
       <div class="countries-grid">
-        <div class="select-controls" style="margin-bottom: 15px;">
-          <button id="selectAllCountries" data-testid="countries-select-all" style="padding: 8px 12px; margin-right: 5px;">Select All</button>
-          <button id="clearAllCountries" data-testid="countries-clear-all" style="padding: 8px 12px;">Clear All</button>
-          <span id="countryCount" data-testid="countries-count" style="margin-left: 15px; font-weight: bold;">Selected: 0</span>
+        <div class="select-controls mb-15">
+          <button id="selectAllCountries" data-testid="countries-select-all" class="btn-md-gap">Select All</button>
+          <button id="clearAllCountries" data-testid="countries-clear-all" class="btn-md">Clear All</button>
+          <span id="countryCount" data-testid="countries-count" class="countries-count-label">Selected: 0</span>
         </div>
-        <div id="countryCheckboxes" data-testid="countries-checkboxes" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 10px; border-radius: 4px; background: #f8f9fa;">
+        <div id="countryCheckboxes" data-testid="countries-checkboxes" class="countries-grid-inner">
     `;
 
     this.countries.forEach(country => {
       const isSelected = this.selectedCountries.has(country.code);
       html += `
-        <label data-testid="country-option" data-country-code="${country.code}" style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px; border-radius: 4px; background: ${isSelected ? '#e3f2fd' : 'transparent'};">
+        <label data-testid="country-option" data-country-code="${country.code}" class="country-row ${isSelected ? 'is-selected' : ''}">
           <input type="checkbox" class="country-checkbox" value="${country.code}" data-name="${country.name}" ${isSelected ? 'checked' : ''}>
           <span>${country.flag}</span>
           <span>${country.name}</span>
@@ -175,8 +175,8 @@ const CompaniesCountries = {
           <td class="link-cell"><a href="${company.career_url}" target="_blank">Visit</a></td>
           <td>${posCount}</td>
           <td>
-            <button style="padding: 4px 8px; font-size: 12px; margin-right: 5px;" onclick="CompaniesCountries.editCompany(${company.id})">Edit</button>
-            <button style="padding: 4px 8px; font-size: 12px;" onclick="CompaniesCountries.deleteCompany(${company.id})">Delete</button>
+            <button class="btn-sm-gap" onclick="CompaniesCountries.editCompany(${company.id})">Edit</button>
+            <button class="btn-sm" onclick="CompaniesCountries.deleteCompany(${company.id})">Delete</button>
           </td>
         </tr>
       `;

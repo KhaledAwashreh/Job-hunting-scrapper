@@ -86,44 +86,44 @@ const ProfilesTab = {
       html += `
         <div class="accordion-item">
           <div class="accordion-header" onclick="ProfilesTab.toggleAccordion(${idx})">
-            <div style="flex: 1;">
-              <h4 style="margin: 0 0 5px 0;">${profile.name}</h4>
-              <small style="color: #666;">${jobTypesStr}</small>
+            <div class="flex-1">
+              <h4 class="mb-5">${profile.name}</h4>
+              <small class="text-muted">${jobTypesStr}</small>
             </div>
             <span class="accordion-icon">▼</span>
           </div>
           <div class="accordion-content" id="accordion-${idx}">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="grid-2">
               <div>
                 <strong>Job Types:</strong>
-                <div style="margin-top: 5px; color: #666;">${jobTypesStr}</div>
+                <div class="hint-sm">${jobTypesStr}</div>
               </div>
               <div>
                 <strong>Seniority Level:</strong>
-                <div style="margin-top: 5px; color: #666;">${profile.seniority_level || 'Not specified'}</div>
+                <div class="hint-sm">${profile.seniority_level || 'Not specified'}</div>
               </div>
               <div>
                 <strong>Years of Experience:</strong>
-                <div style="margin-top: 5px; color: #666;">${yearsExp}</div>
+                <div class="hint-sm">${yearsExp}</div>
               </div>
               <div>
                 <strong>Work Location:</strong>
-                <div style="margin-top: 5px; color: #666;">${workLocs}</div>
+                <div class="hint-sm">${workLocs}</div>
               </div>
-              <div style="grid-column: 1/-1;">
+              <div class="span-full">
                 <strong>Resume:</strong>
-                <div style="margin-top: 5px; color: #666;">${profile.resume_file}</div>
+                <div class="hint-sm">${profile.resume_file}</div>
               </div>
               ${profile.secondary_category ? `
-              <div style="grid-column: 1/-1;">
+              <div class="span-full">
                 <strong>Secondary Category:</strong>
-                <div style="margin-top: 5px; color: #666;">${profile.secondary_category}</div>
+                <div class="hint-sm">${profile.secondary_category}</div>
               </div>
               ` : ''}
             </div>
-            <div style="margin-top: 15px; display: flex; gap: 10px;">
-              <button onclick="ProfilesTab.editProfile(${profile.id})" style="flex: 1;">Edit</button>
-              <button onclick="ProfilesTab.deleteProfile(${profile.id})" class="danger" style="flex: 1;">Delete</button>
+            <div class="row-actions">
+              <button onclick="ProfilesTab.editProfile(${profile.id})" class="flex-1">Edit</button>
+              <button onclick="ProfilesTab.deleteProfile(${profile.id})" class="danger flex-1">Delete</button>
             </div>
           </div>
         </div>

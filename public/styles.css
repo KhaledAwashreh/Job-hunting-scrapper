@@ -568,3 +568,125 @@ a:hover {
   .modal-panel { padding: 18px; width: 94%; }
   .toolbar { align-items: stretch; }
 }
+
+/* --- Component classes ----------------------------------------------------
+ * Extracted from inline style attributes in public/components/*.js. Same
+ * declarations, given names. Two dynamic cases stay inline by necessity: the
+ * grouped-position indent (depth-dependent) and the country row's selected
+ * tint (state-dependent). */
+
+.hint-sm      { margin-top: 5px; color: var(--color-ink-muted); }
+.hint-block   { display: block; font-size: 12px; color: var(--color-ink-muted); margin-top: 4px; }
+.text-sm      { font-size: 12px; }
+.text-sm-muted{ font-size: 12px; color: var(--color-ink-muted); }
+.text-faint   { color: var(--color-ink-faint); }
+.text-muted   { color: var(--color-ink-muted); }
+.text-sm-faint{ font-size: 12px; color: var(--color-ink-faint); }
+
+.btn-sm       { padding: 4px 8px; font-size: 12px; }
+.btn-sm-gap   { padding: 4px 8px; font-size: 12px; margin-right: 5px; }
+.btn-md       { padding: 8px 12px; }
+.btn-md-gap   { padding: 8px 12px; margin-right: 5px; }
+
+.flex-1       { flex: 1; }
+.push-right   { margin-left: auto; }
+.span-full    { grid-column: 1 / -1; }
+.mb-15        { margin-bottom: 15px; }
+.m-0          { margin: 0; }
+.mb-5         { margin: 0 0 5px 0; }
+
+.row-actions  { margin-top: 15px; display: flex; gap: 10px; }
+.split-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.grid-2       { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.field-stack  { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+
+.countries-grid-inner {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border-radius: 4px;
+  background: var(--color-surface);
+}
+
+.country-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+.country-row.is-selected { background: #e3f2fd; }
+
+.position-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+
+.position-group-row {
+  padding: 8px;
+  border-left: 2px solid var(--color-border-strong);
+  margin-bottom: 5px;
+}
+
+.position-group-heading {
+  padding: 12px 8px;
+  background: var(--color-surface);
+  margin-top: 10px;
+  margin-bottom: 5px;
+  font-weight: 600;
+  border-radius: 4px;
+  color: var(--color-ink-strong);
+}
+
+.modal-panel-wide {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.resume-editor {
+  width: 100%;
+  height: 60vh;
+  padding: 15px;
+  font-family: 'Times New Roman', serif;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.btn-outline {
+  padding: 8px 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: var(--color-ink);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.choice-card {
+  padding: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  background: var(--color-surface-hover);
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.modal-title    { margin: 0 0 16px; font-size: 16px; }
+.modal-subtitle { font-size: 13px; color: var(--color-ink-muted); margin-bottom: 16px; }
+.countries-count-label { margin-left: 15px; font-weight: bold; }

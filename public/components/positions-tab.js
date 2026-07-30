@@ -147,15 +147,15 @@ const PositionsTab = {
           const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
            
           html += `
-            <div data-testid="position-row" data-position-id="${pos.id}" style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
-              <div style="display: flex; gap: 10px; align-items: center; font-size: 14px; flex-wrap: wrap;">
+            <div data-testid="position-row" data-position-id="${pos.id}" class="position-group-row" style="margin-left: ${level * 20}px;">
+              <div class="position-line">
                 <span class="badge ${scoreClass}" data-testid="position-score">${pos.match_score}</span>
                 <strong data-testid="position-title">${pos.title}</strong>
-                <span data-testid="position-company" style="color: #999;">${pos.company_name}</span>
-                <span data-testid="position-country" style="font-size: 12px; color: #666;">${pos.country}</span>
-                <a href="${pos.link}" target="_blank" data-testid="position-link" style="font-size: 12px;">View</a>
-                <span class="badge ${statusBadgeClass}" style="margin-left: auto;">${pos.status}</span>
-                <button style="padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.tailorResume(${pos.id})">
+                <span data-testid="position-company" class="text-faint">${pos.company_name}</span>
+                <span data-testid="position-country" class="text-sm-muted">${pos.country}</span>
+                <a href="${pos.link}" target="_blank" data-testid="position-link" class="text-sm">View</a>
+                <span class="badge ${statusBadgeClass} push-right">${pos.status}</span>
+                <button class="btn-sm" onclick="PositionsTab.tailorResume(${pos.id})">
                   Tailor Resume
                 </button>
               </div>
@@ -169,15 +169,15 @@ const PositionsTab = {
           const statusBadgeClass = pos.status === 'new' ? 'badge-info' : pos.status === 'applied' ? 'badge-green' : 'badge-red';
            
           html += `
-            <div data-testid="position-row" data-position-id="${pos.id}" style="margin-left: ${level * 20}px; padding: 8px; border-left: 2px solid #ddd; margin-bottom: 5px;">
-              <div style="display: flex; gap: 10px; align-items: center; font-size: 14px; flex-wrap: wrap;">
+            <div data-testid="position-row" data-position-id="${pos.id}" class="position-group-row" style="margin-left: ${level * 20}px;">
+              <div class="position-line">
                 <span class="badge ${scoreClass}" data-testid="position-score">${pos.match_score}</span>
                 <strong data-testid="position-title">${pos.title}</strong>
-                <span data-testid="position-company" style="color: #999;">${pos.company_name}</span>
-                <span data-testid="position-country" style="font-size: 12px; color: #666;">${pos.country}</span>
-                <a href="${pos.link}" target="_blank" data-testid="position-link" style="font-size: 12px;">View</a>
-                <span class="badge ${statusBadgeClass}" style="margin-left: auto;">${pos.status}</span>
-                <button style="padding: 4px 8px; font-size: 12px;" onclick="PositionsTab.tailorResume(${pos.id})">
+                <span data-testid="position-company" class="text-faint">${pos.company_name}</span>
+                <span data-testid="position-country" class="text-sm-muted">${pos.country}</span>
+                <a href="${pos.link}" target="_blank" data-testid="position-link" class="text-sm">View</a>
+                <span class="badge ${statusBadgeClass} push-right">${pos.status}</span>
+                <button class="btn-sm" onclick="PositionsTab.tailorResume(${pos.id})">
                   Tailor Resume
                 </button>
               </div>
@@ -189,8 +189,8 @@ const PositionsTab = {
         const keys = Object.keys(data);
         keys.forEach(key => {
           const count = this.countPositionsInGroup(data[key]);
-          html += `<div style="margin-left: ${level * 20}px; padding: 12px 8px; background: #f8f9fa; margin-top: 10px; margin-bottom: 5px; font-weight: 600; border-radius: 4px; color: #2c3e50;">
-            ${key} <span style="font-size: 12px; color: #999;">(${count} ${count === 1 ? 'job' : 'jobs'})</span>
+          html += `<div class="position-group-heading" style="margin-left: ${level * 20}px;">
+            ${key} <span class="text-sm-faint">(${count} ${count === 1 ? 'job' : 'jobs'})</span>
           </div>`;
           renderGroup(data[key], level + 1);
         });
@@ -381,19 +381,19 @@ const PositionsTab = {
       modal.style.cssText = 'background:white;padding:24px;border-radius:8px;min-width:400px;max-width:500px;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
 
       modal.innerHTML = `
-        <h3 style="margin:0 0 16px;font-size:16px;">Select Profile for Tailoring</h3>
-        <p style="font-size:13px;color:#666;margin-bottom:16px;">Choose which profile/resume to use for tailoring this position:</p>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+        <h3 class="modal-title">Select Profile for Tailoring</h3>
+        <p class="modal-subtitle">Choose which profile/resume to use for tailoring this position:</p>
+        <div class="field-stack">
           ${profiles.map(p => `
-            <button class="profile-option" data-id="${p.id}" style="padding:12px;border:1px solid #ddd;border-radius:4px;background:#f9f9f9;cursor:pointer;text-align:left;font-size:14px;transition:all 0.2s;">
+            <button class="profile-option" data-id="${p.id}" class="choice-card">
               <strong>${p.name}</strong>
-              <span style="display:block;font-size:12px;color:#666;margin-top:4px;">
+              <span class="hint-block">
                 ${Array.isArray(p.job_types) ? p.job_types.join(', ') : ''}${p.seniority_level ? ' — ' + p.seniority_level : ''}
               </span>
             </button>
           `).join('')}
         </div>
-        <button class="profile-picker-cancel" style="padding:8px 16px;border:1px solid #ccc;border-radius:4px;background:#fff;color:#333;cursor:pointer;font-size:13px;">Cancel</button>
+        <button class="profile-picker-cancel btn-outline">Cancel</button>
       `;
 
       overlay.appendChild(modal);
@@ -424,17 +424,17 @@ const PositionsTab = {
       modal.id = 'tailoredResumeModal';
       modal.style = 'display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;';
       modal.innerHTML = `
-        <div style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h3 style="margin: 0;">Tailored Resume (v${version})</h3>
+        <div class="modal-panel-wide">
+          <div class="split-header">
+            <h3 class="m-0">Tailored Resume (v${version})</h3>
             <div>
-              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'txt')" style="padding: 8px 12px; margin-right: 5px;">Download TXT</button>
-              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'docx')" style="padding: 8px 12px; margin-right: 5px;">Download DOCX</button>
-              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'pdf')" style="padding: 8px 12px; margin-right: 5px;">Download PDF</button>
-              <button onclick="document.getElementById('tailoredResumeModal').style.display = 'none'" style="padding: 8px 12px;">Close</button>
+              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'txt')" class="btn-md-gap">Download TXT</button>
+              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'docx')" class="btn-md-gap">Download DOCX</button>
+              <button onclick="PositionsTab.downloadTailored(${tailoredId}, 'pdf')" class="btn-md-gap">Download PDF</button>
+              <button onclick="document.getElementById('tailoredResumeModal').style.display = 'none'" class="btn-md">Close</button>
             </div>
           </div>
-          <textarea id="tailoredText" style="width: 100%; height: 60vh; padding: 15px; font-family: 'Times New Roman', serif; font-size: 12px; line-height: 1.5; border: 1px solid #ddd; border-radius: 4px; resize: vertical;">${tailoredText}</textarea>
+          <textarea id="tailoredText" class="resume-editor">${tailoredText}</textarea>
         </div>
       `;
       document.body.appendChild(modal);
