@@ -7,3 +7,12 @@ dist/
 build/
 *.log
 .aider*
+
+# Vendored upstream clone — not part of this project, re-clone if needed
+langchain4j/
+
+# Personal research notes; deliberately untracked (this repo is public)
+.firecrawl/
+
+# Editor / assistant scratch
+.opencode/
