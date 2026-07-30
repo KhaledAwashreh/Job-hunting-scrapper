@@ -103,4 +103,32 @@ describe('stored XSS payloads in scraped data are neutralized (issue #9)', { ski
     const imgCount = await page.locator('#profilesAccordion img').count();
     assert.equal(imgCount, 0, 'the payload must not have been parsed into a real <img> element');
   });
+
+  test('a hostile tailored-resume text cannot break out of the <textarea> in the tailoring modal', async () => {
+    // showTailoredModal() interpolates tailored_text (LLM output derived from
+    // the job title/description — attacker-influenceable via prompt
+    // injection) into a <textarea> via innerHTML. A payload containing a
+    // literal `</textarea>` closes the element early and anything after it
+    // is parsed as live markup — a distinct injection site from the ones
+    // above, in the same file, same vulnerability class.
+    const breakoutPayload = 'Some tailored resume text</textarea><img src=x onerror="window.__tailoredResumeXss=true">';
+
+    await page.evaluate((text) => {
+      window.__tailoredResumeXss = undefined;
+      PositionsTab.showTailoredModal(1, text, 1);
+    }, breakoutPayload);
+
+    // Image loading (and therefore onerror firing) is asynchronous even once
+    // the element is in the DOM.
+    await page.waitForTimeout(300);
+
+    const fired = await page.evaluate(() => window.__tailoredResumeXss);
+    assert.equal(fired, undefined, 'the onerror payload must not have fired from a <textarea> breakout');
+
+    const imgCount = await page.locator('#tailoredResumeModal img').count();
+    assert.equal(imgCount, 0, 'the payload must not have been parsed into a real <img> element');
+
+    const value = await page.locator('#tailoredText').inputValue();
+    assert.equal(value, breakoutPayload, 'the textarea should still contain the literal payload as its value');
+  });
 });

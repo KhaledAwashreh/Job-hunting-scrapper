@@ -461,7 +461,7 @@ const PositionsTab = {
               <button onclick="document.getElementById('tailoredResumeModal').style.display = 'none'" class="btn-md">Close</button>
             </div>
           </div>
-          <textarea id="tailoredText" class="resume-editor">${tailoredText}</textarea>
+          <textarea id="tailoredText" class="resume-editor">${escapeHtml(tailoredText)}</textarea>
         </div>
       `;
       document.body.appendChild(modal);
