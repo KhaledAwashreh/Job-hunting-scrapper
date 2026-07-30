@@ -136,7 +136,12 @@ const resumeUpload = multer({
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF, DOCX, and TXT allowed.'));
+      // Marked with .status so the error-handling middleware (see bottom of
+      // this file) recognizes this as a client-input error (400) rather than
+      // falling through to the generic 500 handler.
+      const err = new Error('Invalid file type. Only PDF, DOCX, and TXT allowed.');
+      err.status = 400;
+      cb(err);
     }
   }
 });
@@ -205,22 +210,40 @@ app.use((req, res, next) => {
   next();
 });
 
-// Input validation middleware
-const validateCompanyInput = (req, res, next) => {
-  const { name, country, career_url, platform } = req.body;
-  
-  if (!name || typeof name !== 'string' || name.length === 0 || name.length > 255) {
-    return res.status(400).json({ error: 'Invalid name (1-255 characters required)' });
+// Shared company-field validation, used by both POST (full body, every
+// field required) and PATCH (partial body — #22: PATCH used to skip
+// validation entirely, letting invalid values like a bogus platform or an
+// empty name silently persist). In partial mode a field that is simply
+// absent from the request body is skipped (PATCH allows partial updates);
+// a field that IS present is validated with the exact same rule as POST.
+function validateCompanyFields(fields, { partial = false } = {}) {
+  const { name, country, career_url, platform } = fields;
+
+  if (!partial || name !== undefined) {
+    if (!name || typeof name !== 'string' || name.length === 0 || name.length > 255) {
+      return 'Invalid name (1-255 characters required)';
+    }
   }
-  if (!country || typeof country !== 'string' || country.length === 0 || country.length > 100) {
-    return res.status(400).json({ error: 'Invalid country (1-100 characters required)' });
+  if (!partial || country !== undefined) {
+    if (!country || typeof country !== 'string' || country.length === 0 || country.length > 100) {
+      return 'Invalid country (1-100 characters required)';
+    }
   }
-  if (!isValidHttpUrl(career_url)) {
-    return res.status(400).json({ error: 'Invalid URL format (must be http/https)' });
+  if (!partial || career_url !== undefined) {
+    if (!isValidHttpUrl(career_url)) {
+      return 'Invalid URL format (must be http/https)';
+    }
   }
   if (platform && !['greenhouse', 'lever', 'workday', 'custom', 'rss', 'json_api', 'workable'].includes(platform)) {
-    return res.status(400).json({ error: 'Invalid platform' });
+    return 'Invalid platform';
   }
+  return null;
+}
+
+// Input validation middleware
+const validateCompanyInput = (req, res, next) => {
+  const error = validateCompanyFields(req.body, { partial: false });
+  if (error) return res.status(400).json({ error });
   next();
 };
 
@@ -338,6 +361,14 @@ app.patch('/api/companies/:id', (req, res) => {
   try {
     const { id } = req.params;
     const { name, country, career_url, platform, platform_slug, api_url, active } = req.body;
+
+    // #22: apply the same validation POST uses (in partial mode — only
+    // fields actually present in the body are checked), so an invalid
+    // career_url/platform/name can no longer silently persist via PATCH.
+    const validationError = validateCompanyFields(req.body, { partial: true });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
 
     if (!getCompanyById(id)) {
       return res.status(404).json({ error: 'Company not found' });
@@ -907,7 +938,26 @@ app.use((req, res) => {
 });
 
 // ===== Error handling =====
+// #21: malformed JSON bodies and rejected uploads were both reaching this
+// handler and being coerced to a generic 500, discarding the specific
+// client-input error (and, for JSON, actively downgrading a 400 into a 500).
+// body-parser (used by express.json()) sets err.status = 400 and
+// err.type = 'entity.parse.failed' on malformed JSON; multer sets
+// err instanceof MulterError for its own rule violations (e.g. the file size
+// limit); the fileFilter above marks its own rejection errors with
+// err.status = 400 so they're recognized the same way. Anything else
+// (unexpected exceptions, DB failures, etc.) still falls through to 500.
 app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode;
+  const isClientError =
+    err.type === 'entity.parse.failed' ||
+    err instanceof multer.MulterError ||
+    (typeof status === 'number' && status >= 400 && status < 500);
+
+  if (isClientError) {
+    return res.status(status || 400).json({ error: err.message || 'Invalid request' });
+  }
+
   console.error('Express error:', err);
   return res.status(500).json({ error: 'Internal server error' });
 });
