@@ -1,0 +1,6 @@
+div.tab-content[panel-runs]
+  h2
+  button[scrape-run]
+  span
+  div.u-mt-20[runs-list]
+    div.empty-state[empty-state]

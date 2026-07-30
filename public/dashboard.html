@@ -4,395 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Job Hunter Dashboard</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      background: #f5f5f5;
-      color: #333;
-    }
-
-    .container {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-
-    header {
-      background: #2c3e50;
-      color: white;
-      padding: 20px;
-      margin-bottom: 20px;
-      border-radius: 4px;
-    }
-
-    header h1 {
-      font-size: 24px;
-      margin-bottom: 5px;
-    }
-
-    header p {
-      font-size: 14px;
-      opacity: 0.9;
-    }
-
-    .tabs {
-      display: flex;
-      gap: 0;
-      margin-bottom: 20px;
-      border-bottom: 2px solid #ddd;
-    }
-
-    .tab-button {
-      padding: 12px 20px;
-      background: none;
-      border: none;
-      border-bottom: 3px solid transparent;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      color: #666;
-      transition: all 0.3s;
-    }
-
-    .tab-button:hover {
-      color: #2c3e50;
-      background: #f9f9f9;
-    }
-
-    .tab-button.active {
-      color: #3498db;
-      border-bottom-color: #3498db;
-    }
-
-    .tab-content {
-      display: none;
-      background: white;
-      padding: 20px;
-      border-radius: 4px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    .form-group {
-      margin-bottom: 15px;
-    }
-
-    .form-group label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: 500;
-      font-size: 14px;
-    }
-
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-      width: 100%;
-      padding: 8px 12px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 14px;
-      font-family: inherit;
-    }
-
-    .form-group textarea {
-      resize: vertical;
-      min-height: 100px;
-    }
-
-    .form-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 15px;
-    }
-
-    button {
-      padding: 8px 16px;
-      background: #3498db;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      transition: background 0.3s;
-    }
-
-    button:hover {
-      background: #2980b9;
-    }
-
-    button:disabled {
-      background: #bdc3c7;
-      cursor: not-allowed;
-    }
-
-    button.danger {
-      background: #e74c3c;
-    }
-
-    button.danger:hover {
-      background: #c0392b;
-    }
-
-    .success {
-      background: #27ae60 !important;
-    }
-
-    .success:hover {
-      background: #229954 !important;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 15px;
-    }
-
-    thead {
-      background: #f8f9fa;
-    }
-
-    th {
-      padding: 12px;
-      text-align: left;
-      font-weight: 600;
-      font-size: 13px;
-      border-bottom: 2px solid #dee2e6;
-      color: #666;
-    }
-
-    td {
-      padding: 12px;
-      border-bottom: 1px solid #dee2e6;
-      font-size: 14px;
-    }
-
-    tr:hover {
-      background: #f8f9fa;
-    }
-
-    .badge {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 3px;
-      font-size: 12px;
-      font-weight: 500;
-    }
-
-    .badge-green {
-      background: #d4edda;
-      color: #155724;
-    }
-
-    .badge-amber {
-      background: #fff3cd;
-      color: #856404;
-    }
-
-    .badge-red {
-      background: #f8d7da;
-      color: #721c24;
-    }
-
-    .badge-info {
-      background: #d1ecf1;
-      color: #0c5460;
-    }
-
-    .loading {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid #f3f3f3;
-      border-top: 3px solid #3498db;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
-    .filters {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 15px;
-      flex-wrap: nowrap;
-      overflow-x: auto;
-    }
-
-    .filters select {
-      flex: 1 1 auto;
-      min-width: 140px;
-      padding: 8px 12px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-
-    .error {
-      background: #f8d7da;
-      color: #721c24;
-      padding: 12px;
-      border-radius: 4px;
-      margin-bottom: 15px;
-      border: 1px solid #f5c6cb;
-    }
-
-    .success-message {
-      background: #d4edda;
-      color: #155724;
-      padding: 12px;
-      border-radius: 4px;
-      margin-bottom: 15px;
-      border: 1px solid #c3e6cb;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px;
-      color: #999;
-    }
-
-    .run-detail {
-      background: #f8f9fa;
-      padding: 12px;
-      border-radius: 4px;
-      margin-top: 10px;
-      font-family: monospace;
-      font-size: 12px;
-      max-height: 200px;
-      overflow: auto;
-    }
-
-    .link-cell {
-      font-size: 13px;
-    }
-
-    .actions-cell {
-      white-space: nowrap;
-    }
-
-    .btn-change,
-    .btn-tailor {
-      padding: 4px 10px;
-      font-size: 12px;
-      border: 1px solid #ccc;
-      border-radius: 3px;
-      cursor: pointer;
-      background: #fff;
-      color: #333;
-      transition: all 0.2s;
-    }
-
-    .btn-change:hover {
-      background: #e8f4fd;
-      border-color: #3498db;
-      color: #3498db;
-    }
-
-    .btn-tailor:hover {
-      background: #e8f8e8;
-      border-color: #27ae60;
-      color: #27ae60;
-    }
-
-    .btn-change + .btn-tailor {
-      margin-left: 5px;
-    }
-
-    a {
-      color: #3498db;
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    .spinner-container {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .accordion-item {
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      margin-bottom: 10px;
-      overflow: hidden;
-    }
-
-    .accordion-header {
-      padding: 12px;
-      background: #f8f9fa;
-      cursor: pointer;
-      font-weight: 500;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .accordion-header:hover {
-      background: #eee;
-    }
-
-    .accordion-content {
-      padding: 15px;
-      border-top: 1px solid #eee;
-      display: none;
-    }
-
-    .accordion-content.active {
-      display: block;
-    }
-
-    .accordion-arrow {
-      display: inline-block;
-      transition: transform 0.3s;
-    }
-
-    .accordion-arrow.open {
-      transform: rotate(180deg);
-    }
-
-    .profile-detail {
-      margin-bottom: 12px;
-      font-size: 14px;
-    }
-
-    .profile-detail-label {
-      font-weight: 600;
-      color: #666;
-      margin-bottom: 3px;
-    }
-
-    .countries-grid {
-      margin-top: 10px;
-    }
-
-    .select-controls {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-
-    .grouped-positions {
-      padding: 10px;
-    }
-  </style>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <div class="container">
@@ -428,7 +40,7 @@
         <button id="refreshPositionsBtn" data-testid="positions-refresh">Refresh</button>
       </div>
       
-      <div class="filters" style="margin-top: 15px;">
+      <div class="filters u-mt-15">
         <select id="filterJobType">
           <option value="">Filter by Job Type</option>
         </select>
@@ -483,12 +95,12 @@
         <div id="addCompanyMessage"></div>
       </form>
 
-      <h3 style="margin-top: 30px;">Filter by Country</h3>
+      <h3 class="u-mt-30">Filter by Country</h3>
       <div id="countriesContainer" data-testid="countries-container">
         <div class="empty-state" data-testid="empty-state">Loading countries...</div>
       </div>
 
-      <h3 style="margin-top: 30px;">Active Companies</h3>
+      <h3 class="u-mt-30">Active Companies</h3>
       <div id="companiesTableContainer" data-testid="companies-table">
         <div class="empty-state" data-testid="empty-state">Loading...</div>
       </div>
@@ -498,10 +110,10 @@
     <div id="profiles" class="tab-content" data-testid="panel-profiles">
       <h2>Job Profiles & Resume Matching</h2>
       
-      <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+      <div class="toolbar">
         <div>
-          <label style="font-weight: bold; margin-right: 10px;">Global Time Window:</label>
-          <select id="timeWindowSelect" data-testid="time-window" style="padding: 8px 12px; border-radius: 4px;">
+          <label>Global Time Window:</label>
+          <select id="timeWindowSelect" data-testid="time-window">
             <option value="7">Last 7 days</option>
             <option value="30" selected>Last 30 days</option>
             <option value="90">Last 90 days</option>
@@ -509,7 +121,7 @@
             <option value="all">All time</option>
           </select>
         </div>
-        <button id="addProfileBtn" data-testid="profile-add" style="padding: 8px 16px;">+ Add Profile</button>
+        <button id="addProfileBtn" data-testid="profile-add">+ Add Profile</button>
       </div>
 
       <div id="profilesAccordion" data-testid="profiles-list">
@@ -522,15 +134,15 @@
       <h2>Scraper Runs</h2>
       <button onclick="triggerScrape()" id="scrapeButton" data-testid="scrape-run">Run Scraper Now</button>
       <span id="scrapeStatus"></span>
-      <div id="runsContainer" data-testid="runs-list" style="margin-top: 20px;">
+      <div id="runsContainer" data-testid="runs-list" class="u-mt-20">
         <div class="empty-state" data-testid="empty-state">Loading...</div>
       </div>
     </div>
   </div>
 
   <!-- PROFILE MODAL -->
-  <div id="profileModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-    <div style="background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 550px; max-height: 90vh; overflow-y: auto;">
+  <div id="profileModal" class="modal-backdrop">
+    <div class="modal-panel">
       <h3 id="profileFormTitle">Add Profile</h3>
       <form id="profileForm" data-testid="profile-form" onsubmit="ProfilesTab.saveProfile(event)">
         <div class="form-group">
@@ -541,12 +153,12 @@
         <div class="form-group">
           <label>Resume File</label>
           <input type="file" id="profileResume" accept=".pdf,.doc,.docx" required>
-          <small style="display: block; margin-top: 5px; color: #999;">Accepted: PDF, DOC, DOCX</small>
+          <small class="field-hint">Accepted: PDF, DOC, DOCX</small>
         </div>
 
         <div class="form-group">
           <label>Job Types (Select multiple)</label>
-          <select id="profileJobTypes" multiple required style="min-height: 100px;">
+          <select id="profileJobTypes" multiple required class="select-multi">
             <option value="Backend">Backend</option>
             <option value="Frontend">Frontend</option>
             <option value="FullStack">Full Stack</option>
@@ -557,12 +169,12 @@
             <option value="Data">Data</option>
             <option value="Security">Security</option>
           </select>
-          <small style="display: block; margin-top: 5px; color: #999;">Hold Ctrl/Cmd to select multiple</small>
+          <small class="field-hint">Hold Ctrl/Cmd to select multiple</small>
         </div>
 
         <div class="form-group">
           <label>Years of Experience (Select multiple)</label>
-          <select id="profileYearsExp" multiple style="min-height: 80px;">
+          <select id="profileYearsExp" multiple class="select-multi-sm">
             <option value="0-1">0-1 years</option>
             <option value="1-3">1-3 years</option>
             <option value="3-5">3-5 years</option>
@@ -570,19 +182,19 @@
             <option value="7-10">7-10 years</option>
             <option value="10+">10+ years</option>
           </select>
-          <small style="display: block; margin-top: 5px; color: #999;">Leave empty for no preference</small>
+          <small class="field-hint">Leave empty for no preference</small>
         </div>
 
         <div class="form-group">
           <label>Work Location Preference (Select multiple)</label>
-          <div style="display: flex; flex-direction: column; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
-            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+          <div class="checkbox-stack">
+            <label class="checkbox-row">
               <input type="checkbox" id="workRemote" value="Remote"> Remote
             </label>
-            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+            <label class="checkbox-row">
               <input type="checkbox" id="workOnsite" value="On-site"> On-site
             </label>
-            <label style="display: flex; align-items: center; gap: 8px; font-weight: normal;">
+            <label class="checkbox-row">
               <input type="checkbox" id="workHybrid" value="Hybrid"> Hybrid
             </label>
           </div>
@@ -605,23 +217,14 @@
           <input type="text" id="profileSecondary" placeholder="e.g., Cloud Architecture">
         </div>
 
-        <div style="display: flex; gap: 10px; justify-content: flex-end;">
-          <button type="button" onclick="ProfilesTab.closeModal()" style="background: #999;">Cancel</button>
+        <div class="modal-actions">
+          <button type="button" onclick="ProfilesTab.closeModal()" class="button-muted">Cancel</button>
           <button type="submit">Save Profile</button>
         </div>
       </form>
     </div>
   </div>
 
-  <style>
-    #profileModal {
-      display: none !important;
-    }
-
-    #profileModal.open {
-      display: flex !important;
-    }
-  </style>
 
   <script>
     // Global state
@@ -728,7 +331,7 @@
         const errors = run.errors_json ? JSON.parse(run.errors_json).length : 0;
 
         html += `
-          <tr style="cursor: pointer;" onclick="toggleRunDetail(this)">
+          <tr class="row-clickable" onclick="toggleRunDetail(this)">
             <td>${started}</td>
             <td>${duration}</td>
             <td>${run.companies_visited}</td>
@@ -741,7 +344,7 @@
         if (errors > 0 && run.errors_json) {
           const errorList = JSON.parse(run.errors_json).join('\n');
           html += `
-            <tr style="display: none;">
+            <tr class="row-hidden">
               <td colspan="6">
                 <div class="run-detail">${errorList.replace(/\n/g, '<br>')}</div>
               </td>

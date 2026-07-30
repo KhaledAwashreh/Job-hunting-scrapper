@@ -1,0 +1,46 @@
+div.tab-content[panel-companies]
+  h2
+  h3
+  form[company-form]
+    div.form-row
+      div.form-group
+        label
+        input[company-name]
+      div.form-group
+        label
+        input[company-country]
+    div.form-group
+      label
+      input[company-career-url]
+    div.form-row
+      div.form-group
+        label
+        select[company-platform]
+          option  ×7
+    button
+    div
+  h3.u-mt-30
+  div[countries-container]
+    div.countries-grid
+      div.select-controls
+        button[countries-select-all]
+        button[countries-clear-all]
+        span[countries-count]
+      div[countries-checkboxes]
+        label[country-option]  ×280
+          input.country-checkbox
+          span  ×2
+  h3.u-mt-30
+  div[companies-table]
+    table
+      thead
+        tr
+          th  ×6
+      tbody
+        tr  ×2
+          td  ×3
+          td.link-cell
+            a
+          td
+          td
+            button  ×2

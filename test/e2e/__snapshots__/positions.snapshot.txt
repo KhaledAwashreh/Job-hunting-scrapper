@@ -1,0 +1,61 @@
+div.tab-content[panel-positions]
+  h2
+  div.filters
+    select[filter-country]
+      option  ×6
+    select[filter-status]
+      option  ×5
+    select[filter-job-type]
+      option  ×5
+    button[positions-refresh]
+  div.filters.u-mt-15
+    select  ×3
+      option
+  div[positions-list]
+    table
+      thead
+        tr
+          th  ×10
+      tbody
+        tr[position-row]  ×2
+          td
+            span.badge.badge-green[position-score]
+          td[position-country]
+          td[position-company]
+          td[position-title]
+          td  ×3
+          td.link-cell
+            a[position-link]
+          td
+            span.badge.badge-info
+          td.actions-cell
+            button.btn-change
+            button.btn-tailor
+        tr[position-row]  ×2
+          td
+            span.badge.badge-amber[position-score]
+          td[position-country]
+          td[position-company]
+          td[position-title]
+          td  ×3
+          td.link-cell
+            a[position-link]
+          td
+            span.badge.badge-info
+          td.actions-cell
+            button.btn-change
+            button.btn-tailor
+        tr[position-row]
+          td
+            span.badge.badge-red[position-score]
+          td[position-country]
+          td[position-company]
+          td[position-title]
+          td  ×3
+          td.link-cell
+            a[position-link]
+          td
+            span.badge.badge-info
+          td.actions-cell
+            button.btn-change
+            button.btn-tailor

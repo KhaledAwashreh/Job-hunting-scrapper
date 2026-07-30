@@ -1,0 +1,23 @@
+div.tab-content[panel-profiles]
+  h2
+  div.toolbar
+    div
+      label
+      select[time-window]
+        option  ×5
+    button[profile-add]
+  div[profiles-list]
+    div.accordion-item  ×2
+      div.accordion-header
+        div
+          h4
+          small
+        span.accordion-icon
+      div.accordion-content
+        div
+          div  ×5
+            strong
+            div
+        div
+          button
+          button.danger
