@@ -69,11 +69,35 @@ async function waitForHealth(port, child, timeoutMs = 30000) {
   throw new Error(`server did not become healthy in ${timeoutMs}ms: ${lastErr && lastErr.message}`);
 }
 
+// Seed the isolated database in its own process. sql.js keeps the whole database
+// in memory and rewrites the file on every save, so the seeder must finish and
+// exit before the server opens the file — two live writers would clobber it.
+function seedDatabase(dbPath) {
+  return new Promise((resolve, reject) => {
+    const seeder = spawn(process.execPath, [path.join(__dirname, 'seed.js')], {
+      cwd: REPO_ROOT,
+      env: { ...process.env, JOBS_DB_PATH: dbPath },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    let err = '';
+    seeder.stdout.on('data', d => { out += d; });
+    seeder.stderr.on('data', d => { err += d; });
+    seeder.on('exit', code => {
+      if (code === 0) return resolve(JSON.parse(out.trim() || '{}'));
+      reject(new Error(`seeding failed (exit ${code}):\n${err}`));
+    });
+  });
+}
+
 // Boot the server on an ephemeral port with its own database in a temp dir.
-async function startServer(env = {}) {
+// Pass { seed: true } to populate it with the fixture dataset first.
+async function startServer({ seed = false, ...env } = {}) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobhunter-e2e-'));
   const dbPath = path.join(tmpDir, 'test-jobs.db');
   const port = await freePort();
+
+  if (seed) await seedDatabase(dbPath);
 
   const child = spawn(process.execPath, [path.join(REPO_ROOT, 'src/server.js')], {
     cwd: REPO_ROOT,
@@ -126,4 +150,4 @@ function assertRealDbUntouched(before, assert) {
   );
 }
 
-module.exports = { startServer, findBrowser, realDbFingerprint, assertRealDbUntouched, REAL_DB };
+module.exports = { startServer, seedDatabase, findBrowser, realDbFingerprint, assertRealDbUntouched, REAL_DB };
