@@ -1,5 +1,5 @@
 const { detectPlatformAndSlug } = require('./src/agents/apiAgent');
-const { addCompany } = require('./src/db/queries');
+const { addCompany, companyExists } = require('./src/db/queries');
 const { initializeDatabase } = require('./src/db/schema');
 const fs = require('fs');
 
@@ -73,6 +73,19 @@ async function main() {
       console.log(`\n--- ${company.name} (${company.country}) ---`);
       console.log(`  URL: ${company.career_url}`);
 
+      // #29 — companies now has a UNIQUE(name, career_url) constraint and
+      // addCompany() no longer throws on a collision (it just returns the
+      // existing row's id), so this is the only way left to tell "already
+      // exists" apart from "freshly added" for the summary counts below.
+      // Checking first also skips the network round-trip to
+      // detectPlatformAndSlug() for companies that are already in the db,
+      // instead of doing that work and throwing it away.
+      if (companyExists(company.name, company.career_url)) {
+        console.log(`  - Skipped (already exists)`);
+        results.skipped++;
+        continue;
+      }
+
       // Try to detect platform
       let platform = 'custom';
       let platformSlug = null;
@@ -106,13 +119,13 @@ async function main() {
       console.log(`  ✓ Added with ID: ${id}`);
       results.added++;
     } catch (err) {
-      if (err.message && err.message.includes('UNIQUE constraint')) {
-        console.log(`  - Skipped (already exists)`);
-        results.skipped++;
-      } else {
-        console.log(`  ✗ Error: ${err.message}`);
-        results.errors.push({ company: company.name, error: err.message });
-      }
+      // #29 — companyExists() above now catches the "already exists" case
+      // before addCompany() ever runs, and addCompany() itself no longer
+      // throws a UNIQUE-constraint error for a (name, career_url) collision
+      // (it returns the existing row's id instead) — so anything landing
+      // here is a genuine, unexpected error.
+      console.log(`  ✗ Error: ${err.message}`);
+      results.errors.push({ company: company.name, error: err.message });
     }
   }
 

@@ -174,9 +174,31 @@ async function initializeDatabase() {
       platform_slug TEXT,
       api_url       TEXT,
       active        INTEGER DEFAULT 1,
-      created_at    TEXT DEFAULT (datetime('now'))
+      created_at    TEXT DEFAULT (datetime('now')),
+      UNIQUE(name, career_url)
     );
   `);
+
+  // #29 — companies had no UNIQUE constraint, so bulk-add-companies.js (and
+  // POST /api/companies) inserted a fresh duplicate row every run. The
+  // inline UNIQUE(name, career_url) above only takes effect for a table
+  // CREATE TABLE IF NOT EXISTS actually creates — it is a no-op against a
+  // companies table that already exists on disk from before this fix, so it
+  // alone would not protect an existing jobs.db. CREATE UNIQUE INDEX DOES
+  // apply retroactively, so also try that here. If the existing table
+  // already contains duplicate (name, career_url) rows this throws
+  // ("UNIQUE constraint failed") — a real migration hazard confirmed in
+  // docs/review/unconfirmed/U3-database.md (U3.2) that needs a deliberate
+  // dedup pass, out of scope for this fix — so log and continue rather than
+  // crash startup for existing users.
+  try {
+    db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_name_career_url ON companies(name, career_url)`);
+  } catch (e) {
+    console.error(
+      'Could not add UNIQUE index on companies(name, career_url) — the table already has duplicate rows and needs a manual dedup pass first:',
+      e.message
+    );
+  }
 
   // Add platform_slug and api_url columns to existing companies tables
   try { db.run(`ALTER TABLE companies ADD COLUMN platform_slug TEXT`); } catch (e) {

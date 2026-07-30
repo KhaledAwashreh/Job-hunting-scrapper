@@ -27,17 +27,46 @@ function getActiveCompanies() {
   return runQuery('SELECT * FROM companies WHERE active = 1 ORDER BY name');
 }
 
+// #29 — companies now has a UNIQUE(name, career_url) constraint (schema.js).
+// INSERT OR IGNORE means a duplicate (name, career_url) pair no longer
+// throws — it silently matches zero rows, and we re-select the existing
+// row's id instead. This keeps addCompany's contract identical for every
+// existing caller (always returns a real numeric id, never throws on a
+// duplicate), so bulk-add-companies.js and POST /api/companies can call it
+// repeatedly with the same company and just get the same id back rather
+// than crashing or creating a second row.
 function addCompany(name, country, careerUrl, platform = 'custom', platformSlug = null, apiUrl = null) {
   const db = getDatabase();
   const stmt = db.prepare(
-    `INSERT INTO companies (name, country, career_url, platform, platform_slug, api_url) VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT OR IGNORE INTO companies (name, country, career_url, platform, platform_slug, api_url) VALUES (?, ?, ?, ?, ?, ?)`
   );
   stmt.bind([name, country, careerUrl, platform, platformSlug, apiUrl]);
   stmt.step();
   stmt.free();
+
+  if (db.getRowsModified() === 0) {
+    // UNIQUE(name, career_url) collision — INSERT OR IGNORE skipped it.
+    const existing = runQuery(
+      'SELECT id FROM companies WHERE name = ? AND career_url = ?',
+      [name, careerUrl]
+    );
+    return existing[0]?.id || null;
+  }
+
   const id = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
   saveDatabase();
   return id;
+}
+
+// #29 — lets a caller (bulk-add-companies.js) check whether a company would
+// be a duplicate before doing expensive work (e.g. platform detection) for
+// it, and report "skipped" accurately instead of always claiming "added".
+function companyExists(name, careerUrl) {
+  const result = runQuery(
+    'SELECT id FROM companies WHERE name = ? AND career_url = ? LIMIT 1',
+    [name, careerUrl]
+  );
+  return result.length > 0;
 }
 
 function updateCompanyActive(companyId, active) {
@@ -380,6 +409,7 @@ module.exports = {
   getAllCompanies,
   getActiveCompanies,
   addCompany,
+  companyExists,
   updateCompanyActive,
   updateCompany,
   deleteCompany,
