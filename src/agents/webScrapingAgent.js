@@ -240,7 +240,13 @@ async function scrapeWithPuppeteer(url, company) {
       jobs.push({
         title: j.title,
         description: description.substring(0, 2000),
-        link: j.link || url,
+        // No fallback to the listing `url` here: multiple link-less job
+        // cards would otherwise all get the *same* link, which both breaks
+        // the UI's "View" button (it points at the listing page, not the
+        // job) and can collide in job-dedup hashing if they also share
+        // title/description. '' matches this file's own convention for a
+        // missing link elsewhere (see e.g. scrapeWithFirecrawlAgent above).
+        link: j.link || '',
         company: company?.name || '',
         country: company?.country || ''
       });
@@ -250,12 +256,21 @@ async function scrapeWithPuppeteer(url, company) {
     const detailUrls = jobs.slice(0, 5).map(j => j.link).filter(l => l && l.startsWith('http'));
     for (const jobUrl of detailUrls) {
       try {
-        await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+        const response = await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 15000 });
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
+
+        // A 404 (or any non-2xx) detail page still resolves normally from
+        // page.goto() — it doesn't throw or reject — but its <title>/meta
+        // description (e.g. "Page Not Found") must not be allowed to
+        // silently overwrite the good listing-page data already in `jobs`.
+        const status = response ? response.status() : null;
+        if (status !== null && (status < 200 || status >= 300)) {
+          continue;
+        }
+
         const jobContent = await page.content();
         const jobInfo = extractJobFromHTML(jobContent, jobUrl, company);
-        
+
         // Match with existing job
         const existing = jobs.find(j => j.link === jobUrl);
         if (existing && jobInfo.title) {
@@ -406,153 +421,6 @@ function extractJobFromHTML(html, url, company) {
   return result;
 }
 
-// Firecrawl Interact endpoint for dynamic content
-async function scrapeWithFirecrawlInteract(url, company) {
-  if (!process.env.FIRECRAWL_API_KEY) {
-    return null;
-  }
-
-  try {
-    console.log('  → Using Firecrawl v2/interact for dynamic content...');
-
-    // Try v2/interact endpoint
-    const response = await axios.post(
-      'https://api.firecrawl.dev/v2/interact',
-      {
-        url: url,
-        actions: [
-          { type: 'wait', milliseconds: 5000 },
-          { type: 'scrape' }
-        ]
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.FIRECRAWL_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 60000
-      }
-    );
-
-    if (response.data?.data?.markdown) {
-      console.log(`  ✓ Interact got content (${response.data.data.markdown.length} chars)`);
-      return response.data.data.markdown;
-    }
-
-    return null;
-  } catch (error) {
-    console.log(`  ⚠ Interact v2 failed: ${error.message}`);
-    
-    // Try v1/interact as fallback
-    try {
-      const response = await axios.post(
-        'https://api.firecrawl.dev/v1/interact',
-        {
-          url: url,
-          action: 'wait(5000)' 
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${process.env.FIRECRAWL_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 60000
-        }
-      );
-      
-      if (response.data?.data?.markdown) {
-        return response.data.data.markdown;
-      }
-    } catch (e2) {
-      console.log(`  ⚠ Interact v1 also failed: ${e2.message}`);
-    }
-    
-    return null;
-  }
-}
-
-const MEMORY_LIMITS = {
-  MAX_HEAP_MB: 512,
-  MAX_JOBS_IN_MEMORY: 500,
-};
-
-// JSON schema for job extraction
-const JOB_SCHEMA = {
-  type: 'object',
-  properties: {
-    jobs: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          title: { type: 'string' },
-          description: { type: 'string' },
-          qualifications: { type: 'string' },
-          publishDate: { type: 'string' },
-          link: { type: 'string' },
-          company: { type: 'string' },
-          location: { type: 'string' }
-        },
-        required: ['title', 'link']
-      }
-    }
-  },
-  required: ['jobs']
-};
-
-/**
- * Monitor memory pressure during scraping
- * Returns false if memory is critical
- */
-function monitorMemoryPressure(allJobs) {
-  const heapUsage = process.memoryUsage().heapUsed / 1024 / 1024; // MB
-  const HEAP_LIMIT_MB = MEMORY_LIMITS.MAX_HEAP_MB;
-  const JOBS_LIMIT = MEMORY_LIMITS.MAX_JOBS_IN_MEMORY;
-
-  if (heapUsage > HEAP_LIMIT_MB) {
-    console.warn(`⚠ MEMORY WARNING: Heap usage ${heapUsage.toFixed(0)}MB exceeds ${HEAP_LIMIT_MB}MB limit`);
-    return false;
-  }
-
-  if (allJobs.length > JOBS_LIMIT) {
-    console.warn(`⚠ MEMORY WARNING: Jobs array (${allJobs.length}) exceeds ${JOBS_LIMIT} items limit`);
-    return false;
-  }
-
-  if (heapUsage > HEAP_LIMIT_MB * 0.8) {
-    console.warn(`⚠ MEMORY: Heap at ${heapUsage.toFixed(0)}MB (high pressure)`);
-  }
-
-  return true;
-}
-
-/**
- * Detect if a URL belongs to a known SPA/platform to choose optimal strategy.
- */
-function detectSPAType(url, html) {
-  const lower = url.toLowerCase();
-
-  if (lower.includes('greenhouse.io') || lower.includes('boards.greenhouse')) {
-    return 'greenhouse';
-  }
-  if (lower.includes('jobs.lever.co') || lower.includes('api.lever.co')) {
-    return 'lever';
-  }
-  if (lower.includes('myworkdayjobs') || lower.includes('wd5.myworkday')) {
-    return 'workday';
-  }
-  if (lower.includes('apply.workable.com')) {
-    return 'workable';
-  }
-  if (html) {
-    if (html.includes('gatsby')) return 'gatsby';
-    if (html.includes('_next/static')) return 'nextjs';
-    if (html.includes('jibecdn') || html.includes('icims')) return 'jibe';
-    if (html.includes('attrax')) return 'attrax';
-  }
-  return 'unknown';
-}
-
 /**
  * Try to scrape a job page using a direct API-based approach for known ATS.
  * Many ATS platforms have public APIs that aren't always detected by apiAgent.
@@ -563,11 +431,16 @@ async function tryDirectAPIScrape(careerUrl, company) {
   // Try Greenhouse API for any boards.greenhouse.io URL
   if (lower.includes('boards.greenhouse.io') || lower.includes('greenhouse.io')) {
     try {
-      const slug = careerUrl.match(/greenhouse\.io\/([^/?]+)/i);
+      // Reuse apiAgent's already-fixed slug detection (issue #39) rather
+      // than a second, naive regex here — a plain
+      // /greenhouse\.io\/([^/?]+)/ match mis-extracts the slug for the
+      // `{slug}.boards.greenhouse.io` subdomain form.
+      const { detectGreenhouseSlug } = require('./apiAgent');
+      const slug = detectGreenhouseSlug(careerUrl);
       if (slug) {
-        console.log(`  → Direct Greenhouse API attempt: ${slug[1]}`);
+        console.log(`  → Direct Greenhouse API attempt: ${slug}`);
         const { scrapeGreenhouse } = require('./apiAgent');
-        const jobs = await scrapeGreenhouse(slug[1]);
+        const jobs = await scrapeGreenhouse(slug);
         if (jobs && jobs.length > 0) return jobs;
       }
     } catch (e) { /* fall through */ }
@@ -576,14 +449,20 @@ async function tryDirectAPIScrape(careerUrl, company) {
   // Try Lever API for any jobs.lever.co URL
   if (lower.includes('jobs.lever.co') || lower.includes('lever.co')) {
     try {
-      const slug = careerUrl.match(/lever\.co\/([^/?]+)/i);
+      // Reuse apiAgent's already-fixed slug detection (issue #39) — a plain
+      // /lever\.co\/([^/?]+)/ match mis-extracts "v0" as the slug for
+      // api.lever.co/v0/postings/{slug} URLs.
+      const { detectLeverSlug } = require('./apiAgent');
+      const slug = detectLeverSlug(careerUrl);
       if (slug) {
-        console.log(`  → Direct Lever API attempt: ${slug[1]}`);
+        console.log(`  → Direct Lever API attempt: ${slug}`);
         const { scrapeLever } = require('./apiAgent');
-        const jobs = await scrapeLever(slug[1]);
+        const jobs = await scrapeLever(slug);
         if (jobs && jobs.length > 0) return jobs;
       } else {
-        // Try extracting the company name from the URL path
+        // Not part of the #39 bug/fix: kept as-is. Fallback for URL shapes
+        // detectLeverSlug doesn't recognize — try extracting the company
+        // name from the URL path.
         const pathParts = careerUrl.split('/').filter(Boolean);
         const companyName = pathParts[pathParts.length - 1]?.replace(/[?#].*$/, '');
         if (companyName && companyName !== 'jobs') {
@@ -696,221 +575,6 @@ async function scrapeWebsite(careerUrl, company = null) {
 
   console.log('  ✗ All strategies exhausted, returning empty');
   return [];
-}
-
-/**
- * Scrape using Firecrawl API - try multiple strategies
- * 1. First try mapUrl to discover job URLs
- * 2. Then scrape individual job pages
- */
-async function scrapeWithFirecrawlJSON(careerUrl, company) {
-  const firecrawl = getFirecrawlClient();
-
-  if (!firecrawl) {
-    console.warn('  ⚠ Firecrawl API key not set, falling back to empty results');
-    return [];
-  }
-
-  try {
-    console.log('  → Step 1: Mapping URL to discover job links...');
-
-    // First, use mapUrl to discover all URLs on the careers page
-    const mapResult = await firecrawl.mapUrl(careerUrl);
-    
-    require('fs').appendFileSync('debug.log', `\n[${new Date().toISOString()}] Firecrawl mapUrl for ${careerUrl}:\n  Success: ${mapResult.success}\n  Links: ${mapResult.links?.length}\n  Warning: ${mapResult.warning}\n  Error: ${mapResult.error}\n`, 'utf8');
-
-    if (!mapResult.success || !mapResult.links || mapResult.links.length === 0) {
-      console.log('  → Map found no links, trying direct scrape...');
-      return await scrapeWithFirecrawlScrape(careerUrl, company);
-    }
-
-    // Filter for job-related URLs
-    const jobUrls = mapResult.links.filter(link => {
-      const lower = link.toLowerCase();
-      return lower.includes('job') || lower.includes('career') || lower.includes('position') ||
-             lower.includes('/jobs/') || lower.includes('/careers/') || lower.includes('/openings/') ||
-             lower.includes('apply') || lower.includes('detail');
-    });
-
-    console.log(`  → Found ${jobUrls.length} job-related URLs`);
-
-    if (jobUrls.length === 0) {
-      console.log('  → No job URLs found, trying scrape...');
-      return await scrapeWithFirecrawlScrape(careerUrl, company);
-    }
-
-    // Limit to first 10 job URLs
-    const urlsToScrape = jobUrls.slice(0, 10);
-    console.log(`  → Scraping ${urlsToScrape.length} job pages...`);
-
-    // Scrape each job page - basic scrape
-    const allJobs = [];
-    for (const jobUrl of urlsToScrape) {
-      try {
-        // Basic scrape - no actions (they're not supported in v2 API)
-        const scrapeResult = await firecrawl.scrapeUrl(jobUrl, {
-          formats: ['markdown'],
-          onlyMainContent: true,
-          timeout: 30000
-        });
-
-        // Debug: log the result
-        require('fs').appendFileSync('debug.log', `\n[${new Date().toISOString()}] Scraping job page: ${jobUrl}\n  Success: ${scrapeResult.success}\n  Content length: ${scrapeResult.data?.markdown?.length}\n  Content preview: ${scrapeResult.data?.markdown?.substring(0, 500)}\n`, 'utf8');
-
-        if (scrapeResult.success && scrapeResult.data?.markdown) {
-          const jobInfo = extractJobFromPage(scrapeResult.data.markdown, jobUrl, company);
-          console.log(`  → Extracted: ${jobInfo.title || 'no title'}`);
-          if (jobInfo.title) {
-            allJobs.push(jobInfo);
-          }
-        }
-      } catch (e) {
-        console.log(`  ⚠ Failed to scrape job page: ${e.message}`);
-      }
-    }
-
-    console.log(`  ✓ Extracted ${allJobs.length} jobs from individual pages`);
-
-    // Normalize job format
-    const normalizedJobs = allJobs.map(job => ({
-      title: job.title || '',
-      description: (job.description || '').substring(0, 2000),
-      qualifications: (job.qualifications || '').substring(0, 1000),
-      publishDate: job.publishDate || '',
-      link: job.link || '',
-      company: job.company || company?.name || '',
-      country: job.location || company?.country || ''
-    })).filter(j => j.title);
-
-    if (normalizedJobs.length > 0) {
-      return normalizedJobs;
-    }
-
-    // If no jobs found from Firecrawl, try Puppeteer
-    console.log('  → No jobs from Firecrawl, trying Puppeteer...');
-    const puppeteerJobs = await scrapeWithPuppeteer(careerUrl, company);
-    if (puppeteerJobs && puppeteerJobs.length > 0) {
-      console.log(`  ✓ Puppeteer found ${puppeteerJobs.length} jobs`);
-      return puppeteerJobs;
-    }
-
-    // Final fallback to basic scrape
-    console.log('  → Trying basic Firecrawl scrape...');
-    return await scrapeWithFirecrawlScrape(careerUrl, company);
-
-  } catch (error) {
-    console.error(`  ✗ Firecrawl scrape error: ${error.message}`);
-    logger.error(`Firecrawl scrape failed for ${careerUrl}: ${error.stack || error.message}`);
-    
-    // Try Puppeteer as fallback
-    const puppeteerJobs = await scrapeWithPuppeteer(careerUrl, company);
-    if (puppeteerJobs && puppeteerJobs.length > 0) {
-      return puppeteerJobs;
-    }
-    
-    return await scrapeWithFirecrawlScrape(careerUrl, company);
-  }
-}
-
-/**
- * Extract job information from a job detail page
- */
-function extractJobFromPage(markdown, url, company) {
-  const result = {
-    title: '',
-    description: '',
-    qualifications: '',
-    publishDate: '',
-    link: url,
-    company: company?.name || '',
-    location: company?.country || ''
-  };
-
-  // Try to extract title from first heading
-  const titleMatch = markdown.match(/^#\s+(.+)$/m) || markdown.match(/^##\s+(.+)$/m);
-  if (titleMatch) {
-    result.title = titleMatch[1].trim();
-  }
-
-  // Use the rest as description
-  const lines = markdown.split('\n');
-  const descriptionLines = [];
-  let inDescription = false;
-  
-  for (const line of lines) {
-    if (line.startsWith('#')) {
-      inDescription = true;
-      continue;
-    }
-    if (inDescription && line.trim()) {
-      descriptionLines.push(line);
-    }
-  }
-
-  result.description = descriptionLines.join('\n').substring(0, 2000);
-  
-  return result;
-}
-
-/**
- * Fallback: Use Firecrawl's extract method
- */
-async function scrapeWithFirecrawlExtract(careerUrl, company) {
-  const firecrawl = getFirecrawlClient();
-  
-  if (!firecrawl) {
-    return [];
-  }
-
-  try {
-    console.log('  → Trying Firecrawl extract as fallback...');
-
-    const extractPrompt = `Extract all job postings from this careers page. 
-For each job, find and extract:
-- title: The job title/position name
-- description: Full job description or responsibilities
-- qualifications: Required skills, experience, education
-- publishDate: When the job was posted (if visible)
-- link: Direct URL to the job posting
-- company: Company name (if different from page)
-- location: Job location (city, country)
-
-Return a JSON object with a "jobs" array containing all found jobs.`;
-
-    const extractResult = await firecrawl.extract([careerUrl], {
-      prompt: extractPrompt,
-      schema: JOB_SCHEMA
-    });
-
-    // Log the result for debugging
-    require('fs').appendFileSync('debug.log', `\n[${new Date().toISOString()}] Firecrawl extract for ${careerUrl}:\n  Success: ${extractResult.success}\n  Data: ${JSON.stringify(extractResult.data)?.substring(0, 800)}\n  Warning: ${extractResult.warning}\n  Error: ${extractResult.error}\n`, 'utf8');
-
-    if (!extractResult.success) {
-      console.error(`  ✗ Firecrawl extract failed: ${extractResult.error || 'Unknown error'}`);
-      return await scrapeWithFirecrawlScrape(careerUrl, company);
-    }
-
-    const jobs = extractResult.data?.jobs || [];
-    console.log(`  ✓ Firecrawl extracted ${jobs.length} jobs via extract method`);
-
-    // Normalize job format
-    const normalizedJobs = jobs.map(job => ({
-      title: job.title || '',
-      description: (job.description || '').substring(0, 2000),
-      qualifications: (job.qualifications || '').substring(0, 1000),
-      publishDate: job.publishDate || '',
-      link: job.link || '',
-      company: job.company || company?.name || '',
-      country: job.location || company?.country || ''
-    })).filter(j => j.title);
-
-    return normalizedJobs;
-
-  } catch (error) {
-    console.error(`  ✗ Firecrawl extract error: ${error.message}`);
-    logger.error(`Firecrawl extract failed for ${careerUrl}: ${error.stack || error.message}`);
-    return await scrapeWithFirecrawlScrape(careerUrl, company);
-  }
 }
 
 /**
@@ -1094,5 +758,4 @@ function parseJobsFromMarkdown(markdown, links, careerUrl, company) {
 
 module.exports = {
   scrapeWebsite,
-  monitorMemoryPressure,
 };
