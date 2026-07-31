@@ -150,4 +150,40 @@ describe('Profiles tab: edit without re-selecting a resume, and keyboard access 
     assert.equal(response.status(), 200);
     await page.waitForSelector('#profilesAccordion [data-testid="empty-state"]');
   });
+
+  test('issue #14 regression guard: a brand-new profile still requires a resume file', async () => {
+    // The #14 fix must only drop `required` for edit mode (editProfile()) —
+    // showAddProfileForm() has to keep setting it back to true, or creating a
+    // profile with no resume on file at all becomes possible (the server's
+    // validateProfileInput would 400 on it anyway, but the point of `required`
+    // is to fail fast client-side with a clear native message instead of a
+    // silent/opaque server rejection).
+    await page.locator('[data-testid="profile-add"]').click();
+    await page.waitForFunction(() => document.getElementById('profileModal').classList.contains('open'));
+
+    assert.equal(await page.locator('#profileResume').evaluate(el => el.required), true,
+      'a brand-new profile has no resume on file yet, so the file input must stay required');
+
+    await page.locator('#profileName').fill('Regression Guard Profile');
+    await page.locator('#profileJobTypes').selectOption(['Backend']);
+
+    assert.equal(await page.locator('#profileForm').evaluate(el => el.checkValidity()), false,
+      'form validity must be false while the still-required resume file is empty');
+
+    let postFired = false;
+    const onRequest = req => {
+      if (req.url().includes('/api/profiles') && req.method() === 'POST') postFired = true;
+    };
+    page.on('request', onRequest);
+
+    await page.locator('#profileForm button[type="submit"]').click();
+    await page.waitForTimeout(200); // give a (wrongly fired) request a chance to show up
+    page.off('request', onRequest);
+
+    assert.equal(postFired, false, 'native validation must block the submit — no POST should reach the server');
+    assert.equal(await page.locator('#profileModal').evaluate(el => el.classList.contains('open')), true,
+      'the modal must still be open — the browser blocked the submit, saveProfile() never ran');
+
+    await page.locator('.modal-actions button.button-muted').click(); // Cancel, clean up
+  });
 });
