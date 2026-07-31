@@ -429,13 +429,14 @@ async function runScraper() {
               totalPositionsNew++;
               console.log(`  ✓ New: ${job.title} [${jobWithCompany.jobType[0]}] (Score: ${scoreData.score})`);
 
-              // Link to matched profile
+              // Link to matched profile. linkPositionToProfile() (#31) already
+              // no-ops silently on an expected duplicate link (returns false,
+              // never throws) — anything it does throw is a genuine error
+              // (e.g. a NOT NULL violation from a bad id), so let it propagate
+              // to the per-job catch below instead of swallowing it here,
+              // which used to hide exactly the failure #31 was filed about.
               if (matchedProfile) {
-                try {
-                  linkPositionToProfile(result.id, matchedProfile.id, scoreData.score);
-                } catch (linkErr) {
-                  // Already linked
-                }
+                linkPositionToProfile(result.id, matchedProfile.id, scoreData.score);
               }
             } else if (result.isDuplicate) {
               console.log(`  ✓ Skipped duplicate: ${job.title}`);
