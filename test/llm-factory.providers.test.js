@@ -218,6 +218,28 @@ describe('Ollama client — the streaming bug', () => {
     const client = createClient('ollama', { baseUrl: stub.baseUrl });
     assert.equal((await client.complete('hi')).text, '');
   });
+
+  // Issue #50: a slow/dead local Ollama instance must not hang the caller
+  // forever. Point at a server that accepts the connection but never responds,
+  // and confirm complete() aborts on the configured timeout instead of hanging.
+  test('a hanging request aborts via the timeout instead of hanging forever', async () => {
+    const hangingServer = http.createServer(() => {
+      // Deliberately never call res.end() — simulates a stuck local Ollama.
+    });
+    await new Promise(resolve => hangingServer.listen(0, '127.0.0.1', resolve));
+    const hangingBaseUrl = `http://127.0.0.1:${hangingServer.address().port}`;
+
+    try {
+      const client = createClient('ollama', { baseUrl: hangingBaseUrl });
+      const start = Date.now();
+      await assert.rejects(() => client.complete('hi', { timeout: 200 }));
+      const elapsed = Date.now() - start;
+      assert.ok(elapsed < 5000, `expected an early abort, took ${elapsed}ms`);
+    } finally {
+      hangingServer.closeAllConnections();
+      await new Promise(resolve => hangingServer.close(resolve));
+    }
+  });
 });
 
 describe('Ollama client — base URL normalisation', () => {

@@ -190,6 +190,11 @@ function createOllamaClient(options = {}) {
         model: reqModel = model,
         maxTokens = 2048,
         systemPrompt = null,
+        // A local Ollama instance that is slow, overloaded or crashed mid-request
+        // otherwise hangs the fetch indefinitely (no OS-level timeout kicks in
+        // for minutes), stalling the whole scrape run. Same pattern/default as
+        // createOpenAIClient above.
+        timeout = 60000,
       } = options;
 
       const messages = [];
@@ -210,7 +215,8 @@ function createOllamaClient(options = {}) {
           // ollama-backed provider unusable.
           stream: false,
           options: { num_predict: maxTokens }
-        })
+        }),
+        signal: AbortSignal.timeout(timeout),
       });
 
       if (!response.ok) {

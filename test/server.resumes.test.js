@@ -97,3 +97,24 @@ describe('server.js — resume cache logic lives in its own module', () => {
     assert.doesNotMatch(serverSource, /let loadedResumes/);
   });
 });
+
+// #46: validateProfileInput (manual profile create/edit via the UI) must reject an
+// unrecognized seniority_level rather than silently accepting it — the same defect
+// class as the CSV path, covered behaviorally in test/csv-parser.test.js. server.js
+// can't be require()'d in tests (see file-level comment above), so this is verified
+// at the source level: the VALID_SENIORITY list is imported from csvParser and the
+// validator rejects values not in it.
+describe('server.js — validateProfileInput rejects invalid seniority_level (#46)', () => {
+  test('imports VALID_SENIORITY from csvParser', () => {
+    assert.match(serverSource, /VALID_SENIORITY\s*}\s*=\s*require\('\.\/utils\/csvParser'\)/);
+  });
+
+  test('validateProfileInput checks seniority_level against VALID_SENIORITY and 400s on mismatch', () => {
+    const fnIndex = serverSource.indexOf('const validateProfileInput');
+    assert.notEqual(fnIndex, -1);
+    const endIndex = serverSource.indexOf('\n};', fnIndex) + 3;
+    const fnSlice = serverSource.slice(fnIndex, endIndex);
+    assert.match(fnSlice, /VALID_SENIORITY\.includes\(seniority_level\.trim\(\)\.toLowerCase\(\)\)/);
+    assert.match(fnSlice, /status\(400\)/);
+  });
+});

@@ -7,6 +7,23 @@ const csvPath = path.join(__dirname, '../../data/search-params.csv');
 const REQUIRED_CSV_COLUMNS = ['title', 'country'];
 // Valid seniority levels
 const VALID_SENIORITY = ['junior', 'mid', 'senior', 'lead', 'principal', 'staff'];
+// Accepted spellings for the "remote" column (case-insensitive, trimmed)
+const REMOTE_TRUE_VALUES = ['yes', 'true', '1'];
+const REMOTE_FALSE_VALUES = ['no', 'false', '0', ''];
+
+// Normalizes the CSV "remote" column into a boolean, warning on anything unrecognized
+// (matches the seniority column's warn-and-fall-back-to-safe-default pattern).
+function parseRemoteFlag(rawValue, idx) {
+  const normalized = (rawValue || '').trim().toLowerCase();
+  if (REMOTE_TRUE_VALUES.includes(normalized)) {
+    return true;
+  }
+  if (REMOTE_FALSE_VALUES.includes(normalized)) {
+    return false;
+  }
+  console.warn(`Row ${idx + 1}: Invalid remote value "${rawValue}" - treating as not remote`);
+  return false;
+}
 
 function parseSearchParams() {
   try {
@@ -44,9 +61,16 @@ function parseSearchParams() {
           throw new Error(`Row ${idx + 1}: country is required and cannot be empty`);
         }
 
-        // Validate seniority if present
-        if (record.seniority && !VALID_SENIORITY.includes(record.seniority.trim().toLowerCase())) {
-          console.warn(`Row ${idx + 1}: Invalid seniority "${record.seniority}" - ignoring`);
+        // Validate seniority if present - an invalid value is dropped (null), not stored,
+        // so it doesn't silently disable downstream seniority filtering.
+        let seniority = null;
+        if (record.seniority) {
+          const normalizedSeniority = record.seniority.trim().toLowerCase();
+          if (VALID_SENIORITY.includes(normalizedSeniority)) {
+            seniority = normalizedSeniority;
+          } else {
+            console.warn(`Row ${idx + 1}: Invalid seniority "${record.seniority}" - ignoring`);
+          }
         }
 
         validatedRecords.push({
@@ -55,8 +79,8 @@ function parseSearchParams() {
             ? record.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0)
             : [],
           country: record.country.trim(),
-          seniority: record.seniority ? record.seniority.trim().toLowerCase() : null,
-          remote: record.remote === 'yes' || record.remote === 'true'
+          seniority,
+          remote: parseRemoteFlag(record.remote, idx)
         });
       } catch (rowErr) {
         console.error(`CSV validation error: ${rowErr.message}`);
@@ -71,4 +95,4 @@ function parseSearchParams() {
   }
 }
 
-module.exports = { parseSearchParams };
+module.exports = { parseSearchParams, VALID_SENIORITY };

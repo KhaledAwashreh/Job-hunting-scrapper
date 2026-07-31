@@ -1,6 +1,45 @@
 const { createClient, getProviderForUseCase, defaultModelFor } = require('../utils/llmFactory');
 
 /**
+ * Parse an LLM scoring reply into an object, tolerating the common ways models
+ * deviate from "respond ONLY with JSON": a ```json ... ``` fence, or prose
+ * before/after the JSON object. Returns null if no JSON object can be
+ * recovered (truncated JSON, empty string, etc.) so the caller can distinguish
+ * a parse failure from a genuine score.
+ * @param {string} text - Raw LLM response text
+ * @returns {object|null} Parsed object, or null if parsing failed
+ */
+function parseScoringResponse(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  let candidate = text.trim();
+
+  // Strip a ```json ... ``` or plain ``` ... ``` fence if present.
+  const fenceMatch = candidate.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch) {
+    candidate = fenceMatch[1].trim();
+  }
+
+  try {
+    return JSON.parse(candidate);
+  } catch (_) {
+    // Fall through and try to extract a balanced {...} span from prose.
+  }
+
+  const start = candidate.indexOf('{');
+  const end = candidate.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    try {
+      return JSON.parse(candidate.slice(start, end + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Extract key information from resume text for better matching
  * @param {string} resumeText - The full resume text
  * @returns {object} Summary of resume key points
@@ -169,23 +208,35 @@ ${resumeSummaries}`;
     });
 
     const text = response.text;
-    
-    // Handle JSON parsing with fallback
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch (parseErr) {
-      console.warn('Failed to parse scoring response as JSON:', parseErr.message);
+
+    // Strip fences/prose before parsing so a model that doesn't reply with
+    // bare JSON doesn't silently collapse to a score indistinguishable from a
+    // genuine 0 (issue #44).
+    const parsed = parseScoringResponse(text);
+    if (!parsed) {
+      console.warn('Failed to parse scoring response as JSON:', text.slice(0, 200));
+      // -1 is not a reachable real score (score is clamped to 0-100 below), so
+      // it is distinguishable downstream from a genuine 0.
       return {
-        score: 0,
+        score: -1,
         matched_resume: null,
         reasoning: 'Scoring response parsing failed'
       };
     }
 
+    // matched_resume must be a small positive integer identifying one of the
+    // resumes actually passed in — an out-of-range or non-numeric value from
+    // the LLM must not reach the DB (issue #45).
+    const matchedResumeNum = Number(parsed.matched_resume);
+    const matched_resume = (
+      Number.isInteger(matchedResumeNum) &&
+      matchedResumeNum >= 1 &&
+      matchedResumeNum <= resumes.length
+    ) ? matchedResumeNum : null;
+
     return {
       score: Math.min(100, Math.max(0, parseInt(parsed.score) || 0)),
-      matched_resume: parsed.matched_resume || null,
+      matched_resume,
       reasoning: parsed.reasoning || 'No reasoning provided'
     };
   } catch (error) {
@@ -198,4 +249,4 @@ ${resumeSummaries}`;
   }
 }
 
-module.exports = { scorePosition, extractResumeSummary };
+module.exports = { scorePosition, extractResumeSummary, parseScoringResponse };
