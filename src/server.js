@@ -390,7 +390,24 @@ app.get('/api/profiles', (req, res) => {
 });
 
 // ===== Resume Upload API =====
-app.post('/api/resumes/upload', resumeUpload.single('resume'), async (req, res) => {
+// Wrap multer's middleware so its rejection reason (bad file type vs. too
+// large) surfaces as a distinguishable 400 instead of falling through to the
+// generic 500 handler (issue #16).
+function handleResumeUpload(req, res, next) {
+  resumeUpload.single('resume')(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File is too large. Maximum allowed size is 10MB.' });
+    }
+    if (err.message && err.message.startsWith('Invalid file type')) {
+      return res.status(400).json({ error: 'Invalid file type. Only PDF, DOCX, and TXT files are allowed.' });
+    }
+    return res.status(400).json({ error: err.message || 'Upload failed' });
+  });
+}
+
+app.post('/api/resumes/upload', handleResumeUpload, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });

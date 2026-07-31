@@ -491,7 +491,7 @@ const PositionsTab = {
         <p class="modal-subtitle">Choose which profile/resume to use for tailoring this position:</p>
         <div class="field-stack">
           ${profiles.map(p => `
-            <button class="profile-option" data-id="${p.id}" class="choice-card">
+            <button class="profile-option choice-card" data-id="${p.id}">
               <strong>${escapeHtml(p.name)}</strong>
               <span class="hint-block">
                 ${escapeHtml(Array.isArray(p.job_types) ? p.job_types.join(', ') : '')}${p.seniority_level ? ' — ' + escapeHtml(p.seniority_level) : ''}

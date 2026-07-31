@@ -204,7 +204,14 @@ const ProfilesTab = {
           const uploadData = await uploadRes.json();
           resume_file = uploadData.filename;
         } else {
-          showError('Failed to upload resume');
+          let reason = 'Failed to upload resume';
+          try {
+            const errData = await uploadRes.json();
+            if (errData && errData.error) reason = errData.error;
+          } catch {
+            // response body wasn't JSON; fall back to the generic message
+          }
+          showError(reason);
           return;
         }
       } catch (error) {
