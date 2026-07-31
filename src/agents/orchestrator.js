@@ -31,7 +31,10 @@ const {
   linkPositionToProfile,
   updatePositionProfileScore,
   setTimeWindowPreference,
-  getTimeWindowPreference
+  getTimeWindowPreference,
+  flushDatabase,
+  beginBatch,
+  endBatch
 } = require('../db/queries');
 
 let currentRunId = null;
@@ -244,6 +247,15 @@ async function runScraper() {
     let totalSkippedOld = 0;
     const errors = [];
 
+    // #28 — batch writes for the duration of the scrape instead of doing a
+    // full saveDatabase() (whole-DB export + rewrite) after every single
+    // addPosition()/linkPositionToProfile() call. flushDatabase() is called
+    // once per company below so a crash mid-run only loses that company's
+    // unsaved positions rather than the whole run, and endBatch() in the
+    // outer finally block guarantees a final flush on every exit path
+    // (success, thrown error, or timeout-triggered stop).
+    beginBatch();
+
     // Scrape each company
     for (const company of companies) {
       try {
@@ -417,13 +429,14 @@ async function runScraper() {
               totalPositionsNew++;
               console.log(`  ✓ New: ${job.title} [${jobWithCompany.jobType[0]}] (Score: ${scoreData.score})`);
 
-              // Link to matched profile
+              // Link to matched profile. linkPositionToProfile() (#31) already
+              // no-ops silently on an expected duplicate link (returns false,
+              // never throws) — anything it does throw is a genuine error
+              // (e.g. a NOT NULL violation from a bad id), so let it propagate
+              // to the per-job catch below instead of swallowing it here,
+              // which used to hide exactly the failure #31 was filed about.
               if (matchedProfile) {
-                try {
-                  linkPositionToProfile(result.id, matchedProfile.id, scoreData.score);
-                } catch (linkErr) {
-                  // Already linked
-                }
+                linkPositionToProfile(result.id, matchedProfile.id, scoreData.score);
               }
             } else if (result.isDuplicate) {
               console.log(`  ✓ Skipped duplicate: ${job.title}`);
@@ -441,6 +454,12 @@ async function runScraper() {
       } catch (companyError) {
         errors.push(`Error processing ${company.name}: ${companyError.message}`);
         logger.error(`Company scrape error (${company.name}): ${companyError.stack || companyError.message}`);
+      } finally {
+        // Checkpoint: commit this company's positions to disk now rather than
+        // waiting for the whole run to finish. Bounds the batching window to
+        // "one company" instead of "every company visited so far", while
+        // still avoiding a full saveDatabase() per position.
+        flushDatabase();
       }
     }
 
@@ -483,6 +502,10 @@ async function runScraper() {
     }
     throw error;
   } finally {
+    // Guarantee no batched write is left un-persisted on any exit path,
+    // including ones that never reached the per-company flush above (e.g. an
+    // error thrown before the companies loop starts).
+    endBatch();
     await acquireStateLock();
     try {
       isRunning = false;

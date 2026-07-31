@@ -293,7 +293,7 @@ async function startup() {
     console.log('Database initialized');
 
     console.log('Loading resumes...');
-    const resumes = await resumeCache.refresh();
+    const resumes = await resumeCache.refresh(RESUMES_DIR);
     console.log(`Loaded ${resumes.length} resume(s)`);
   } catch (error) {
     console.error('Startup error:', error);
@@ -670,8 +670,23 @@ function tailorRateLimit(req, res, next) {
   next();
 }
 
+// #27 — same-process version race on POST /api/positions/:id/tailor.
+// The handler reads the current version synchronously, awaits a (slow, paid)
+// LLM call, then inserts. Two concurrent requests for the same position+
+// profile (double click, two tabs, a client retry) both read the same next
+// version before either finishes its await, then race to insert — the loser
+// hits the UNIQUE(position_id, profile_id, version) constraint and gets a
+// 500 after already paying for an LLM call it can't save. Node is
+// single-threaded and there is no `await` between the guard check and the
+// guard being set below, so this in-memory Set is enough to serialize
+// concurrent requests for the same position+profile within this one
+// process — no cross-process locking needed here (that's what #26's
+// DB-level lock already covers).
+const tailoringInFlight = new Set();
+
 // Generate a new tailored resume for a position
 app.post('/api/positions/:positionId/tailor', tailorRateLimit, async (req, res) => {
+  let tailorKey = null;
   try {
     const { positionId } = req.params;
     const { profileId } = req.body;
@@ -707,6 +722,19 @@ app.post('/api/positions/:positionId/tailor', tailorRateLimit, async (req, res) 
     if (!profile) {
       return res.status(404).json({ error: 'Profile not found' });
     }
+
+    // #27 — reject a second concurrent tailor request for this exact
+    // position+profile instead of racing it: this check-and-set is
+    // synchronous (no `await` in between), so it is safe against Node's
+    // single-threaded event loop even though the rest of this handler is
+    // async. Guards before any version read or LLM call, so the rejected
+    // request never pays for a wasted LLM call.
+    tailorKey = `${positionId}:${targetProfileId}`;
+    if (tailoringInFlight.has(tailorKey)) {
+      tailorKey = null; // don't release a guard this request never acquired
+      return res.status(409).json({ error: 'A tailor request for this position and profile is already in progress' });
+    }
+    tailoringInFlight.add(tailorKey);
 
     // 4. Get base resume text
     const targetResume = resumeCache.get().find(r => r.filename === profile.resume_file);
@@ -768,6 +796,12 @@ app.post('/api/positions/:positionId/tailor', tailorRateLimit, async (req, res) 
   } catch (error) {
     console.error('Tailoring error:', error.message);
     res.status(500).json({ error: error.message });
+  } finally {
+    // #27 — always release the guard, whether this request succeeded,
+    // errored, or returned early (e.g. position/profile not found) after
+    // having acquired it. tailorKey stays null if this request never
+    // acquired the guard (rejected with 409, or returned before reaching it).
+    if (tailorKey) tailoringInFlight.delete(tailorKey);
   }
 });
 

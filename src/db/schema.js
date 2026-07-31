@@ -10,7 +10,150 @@ const path = require('path');
 const dbPath = process.env.JOBS_DB_PATH || path.join(__dirname, '../../jobs.db');
 let database = null;
 
+// ---------------------------------------------------------------------------
+// #26 — cross-process write lock
+//
+// sql.js has no concept of a shared file: every write is a full in-memory
+// `export()` + `fs.writeFileSync()` of the whole database, with no locking,
+// merge, or version check. If a second OS process (e.g. bulk-add-companies.js
+// run while the server is up, or an accidental second server instance) also
+// opens the same file, whichever process saves last wins in full and the
+// other process's entire session of writes disappears silently.
+//
+// A per-write lock would not actually fix this: process B may have already
+// read a stale snapshot into memory before process A's lock is ever taken, so
+// locking only the `writeFileSync` step cannot prevent the lost update. What
+// it CAN do is turn the failure mode from "silent data loss" into "fails
+// loudly at startup" — so instead we hold one advisory lock for the whole
+// lifetime of the process's database session (acquired in
+// initializeDatabase(), released on process exit), implemented with
+// `fs.mkdirSync`, which is atomic on every platform Node supports (no new
+// dependency, per the MVP constraint that ruled out proper-lockfile). A
+// second process trying to open the same database while the lock is held
+// gets a clear error instead of silently clobbering the first process's
+// writes.
+//
+// The lock directory stores the holder's pid so a crashed process (e.g.
+// `kill -9`, which skips our `process.on('exit', ...)` cleanup) doesn't wedge
+// the database forever: the next process to try locking it checks whether
+// that pid is still alive (`process.kill(pid, 0)`, a built-in Node primitive
+// — no dependency) and reclaims the lock if not.
+const lockPath = `${dbPath}.lock`;
+let lockAcquired = false;
+
+function isPidAlive(pid) {
+  if (!pid || Number.isNaN(pid)) return false;
+  try {
+    process.kill(pid, 0); // signal 0: existence check only, sends nothing
+    return true;
+  } catch (err) {
+    // EPERM means the pid exists but is owned by another user — treat that
+    // as "alive" (we can't prove it's dead, so don't steal the lock).
+    return err.code === 'EPERM';
+  }
+}
+
+// Blocks the event loop for roughly `ms` milliseconds. Only ever used on the
+// rare lock-contention path in acquireLock() below (never on the common
+// uncontended startup path), to wait out the brief gap between a competing
+// process's fs.mkdirSync(lockPath) and its follow-up pid write — not a
+// general-purpose sleep.
+function spinWaitMs(ms) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) { /* busy-wait */ }
+}
+
+function acquireLock() {
+  if (lockAcquired) return; // already held by this process (e.g. re-init in tests)
+  try {
+    fs.mkdirSync(lockPath);
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+
+    const pidFile = path.join(lockPath, 'pid');
+
+    // fs.mkdirSync(lockPath) and the pid write at the bottom of this function
+    // are two separate syscalls, not one atomic operation. If a second
+    // process calls acquireLock() while a first process's mkdirSync has
+    // succeeded but its pid write hasn't happened yet, a naive one-shot read
+    // here would see "no pid file" and — before this fix — treat that
+    // identically to "the holder crashed", reclaiming a lock that is very
+    // much still live. Retry briefly (far longer than the sub-millisecond
+    // gap between those two syscalls) before concluding the lock is actually
+    // orphaned, so a genuinely concurrent acquisition is detected as "in use"
+    // instead of being stolen.
+    let holderPid = null;
+    let pidAvailable = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const parsed = parseInt(fs.readFileSync(pidFile, 'utf8'), 10);
+        if (!Number.isNaN(parsed)) {
+          holderPid = parsed;
+          pidAvailable = true;
+          break;
+        }
+      } catch (_) {
+        // not written yet (or removed concurrently) — retry below
+      }
+      if (attempt < 9) spinWaitMs(20);
+    }
+
+    if (pidAvailable && isPidAlive(holderPid)) {
+      throw new Error(
+        `Database "${dbPath}" is already in use by another process (pid ${holderPid}). ` +
+        `sql.js rewrites the whole database file on every save with no merge, so two ` +
+        `writers can silently clobber each other's changes. Stop the other process ` +
+        `before starting this one, or if it is not actually running, delete "${lockPath}" and retry.`
+      );
+    }
+
+    // Orphaned lock (holder process crashed, whether before or after writing
+    // its pid) — reclaim it.
+    fs.rmSync(lockPath, { recursive: true, force: true });
+    fs.mkdirSync(lockPath);
+  }
+  fs.writeFileSync(path.join(lockPath, 'pid'), String(process.pid));
+  lockAcquired = true;
+}
+
+function releaseLock() {
+  if (!lockAcquired) return;
+  try {
+    fs.rmSync(lockPath, { recursive: true, force: true });
+  } catch (_) {
+    // best effort — process is exiting anyway
+  }
+  lockAcquired = false;
+}
+
+// Sync fs calls are safe inside an 'exit' handler; this is the safety net for
+// graceful shutdowns and process.exit() calls (SIGKILL cannot be caught by
+// design — that's what the pid-liveness check in acquireLock() is for).
+process.on('exit', releaseLock);
+
+// ---------------------------------------------------------------------------
+// #28 — batched saves
+//
+// runWrite() used to call saveDatabase() after every single INSERT/UPDATE,
+// and saveDatabase() serializes the ENTIRE in-memory database on every call.
+// During a scrape, addPosition() runs once per scraped job in a tight loop,
+// so save cost (and therefore scrape time) grew with the square of the
+// database size, not linearly with new positions.
+//
+// saveDatabase() now respects an in-memory "batching" flag: while a batch is
+// open, calls just mark the database dirty instead of writing, and the
+// actual export()+writeFileSync() is deferred to flushDatabase() (or the
+// automatic flush endBatch() performs). Outside a batch (the default —
+// covers every existing caller: server request handlers, addCompany,
+// createScrapeRun, etc.) saveDatabase() writes immediately, exactly as
+// before, so nothing about normal single-write durability changes.
+// Bulk-write callers (see runScraper() in orchestrator.js) opt in with
+// beginBatch()/endBatch() around their write loop.
+let batching = false;
+let dirty = false;
+
 async function initializeDatabase() {
+  acquireLock();
   const SQL = await initSqlJs();
 
   let db;
@@ -20,6 +163,14 @@ async function initializeDatabase() {
   } else {
     db = new SQL.Database();
   }
+
+  // #30 — schema.js declares `ON DELETE CASCADE` on positions.company_id,
+  // position_profiles.position_id/profile_id, and
+  // tailored_resumes.position_id/profile_id, but SQLite (and therefore
+  // sql.js) has foreign-key enforcement OFF by default per connection — the
+  // declared cascades never actually fire without this. Must be set on every
+  // new connection (it is not persisted in the database file itself).
+  db.run('PRAGMA foreign_keys = ON');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS companies (
@@ -31,9 +182,31 @@ async function initializeDatabase() {
       platform_slug TEXT,
       api_url       TEXT,
       active        INTEGER DEFAULT 1,
-      created_at    TEXT DEFAULT (datetime('now'))
+      created_at    TEXT DEFAULT (datetime('now')),
+      UNIQUE(name, career_url)
     );
   `);
+
+  // #29 — companies had no UNIQUE constraint, so bulk-add-companies.js (and
+  // POST /api/companies) inserted a fresh duplicate row every run. The
+  // inline UNIQUE(name, career_url) above only takes effect for a table
+  // CREATE TABLE IF NOT EXISTS actually creates — it is a no-op against a
+  // companies table that already exists on disk from before this fix, so it
+  // alone would not protect an existing jobs.db. CREATE UNIQUE INDEX DOES
+  // apply retroactively, so also try that here. If the existing table
+  // already contains duplicate (name, career_url) rows this throws
+  // ("UNIQUE constraint failed") — a real migration hazard confirmed in
+  // docs/review/unconfirmed/U3-database.md (U3.2) that needs a deliberate
+  // dedup pass, out of scope for this fix — so log and continue rather than
+  // crash startup for existing users.
+  try {
+    db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_name_career_url ON companies(name, career_url)`);
+  } catch (e) {
+    console.error(
+      'Could not add UNIQUE index on companies(name, career_url) — the table already has duplicate rows and needs a manual dedup pass first:',
+      e.message
+    );
+  }
 
   // Add platform_slug and api_url columns to existing companies tables
   try { db.run(`ALTER TABLE companies ADD COLUMN platform_slug TEXT`); } catch (e) {
@@ -157,16 +330,60 @@ function getDatabase() {
   return database;
 }
 
-function saveDatabase() {
+function writeToDisk() {
   if (database) {
+    // sql.js's Database.export() closes the underlying sqlite3 connection and
+    // reopens a fresh one internally (to serialize its bytes) before
+    // returning — this same `database` object keeps working afterward, but
+    // the reopen resets every connection-level PRAGMA, including
+    // `foreign_keys`, back to SQLite's off-by-default. Since saveDatabase()
+    // (and therefore writeToDisk()) runs after nearly every write via
+    // runWrite(), foreign_keys would silently go back to OFF moments after
+    // initializeDatabase() turned it ON — re-assert it every time so #30's
+    // cascade deletes keep firing on the very next query.
     const data = database.export();
     fs.writeFileSync(dbPath, Buffer.from(data));
+    database.run('PRAGMA foreign_keys = ON');
   }
+  dirty = false;
+}
+
+function saveDatabase() {
+  if (!database) return;
+  dirty = true;
+  if (batching) return; // deferred — flushDatabase()/endBatch() will write it
+  writeToDisk();
+}
+
+// Forces any pending batched write to disk right now. Safe to call whether or
+// not a batch is open, and a no-op if nothing is dirty.
+function flushDatabase() {
+  if (dirty) writeToDisk();
+}
+
+// Enter batched-write mode: saveDatabase() calls become cheap (just set the
+// dirty flag) until endBatch() (or an explicit flushDatabase()) runs. Meant
+// for bulk write loops — see runScraper() in orchestrator.js, which also
+// calls flushDatabase() at natural checkpoints (once per company) so a crash
+// mid-run only loses that company's unsaved positions, not the whole run.
+// Not reentrant — callers pair it with a try/finally endBatch().
+function beginBatch() {
+  batching = true;
+}
+
+// Leaves batched-write mode and flushes any pending write, guaranteeing
+// nothing is left silently deferred once the batch caller returns.
+function endBatch() {
+  batching = false;
+  flushDatabase();
 }
 
 module.exports = {
   initializeDatabase,
   getDatabase,
   saveDatabase,
+  flushDatabase,
+  beginBatch,
+  endBatch,
   dbPath
 };

@@ -1,4 +1,4 @@
-const { getDatabase, saveDatabase } = require('./schema');
+const { getDatabase, saveDatabase, flushDatabase, beginBatch, endBatch } = require('./schema');
 const { ensureArray } = require('../utils/typeHelpers');
 
 function runQuery(query, params = []) {
@@ -27,17 +27,46 @@ function getActiveCompanies() {
   return runQuery('SELECT * FROM companies WHERE active = 1 ORDER BY name');
 }
 
+// #29 — companies now has a UNIQUE(name, career_url) constraint (schema.js).
+// INSERT OR IGNORE means a duplicate (name, career_url) pair no longer
+// throws — it silently matches zero rows, and we re-select the existing
+// row's id instead. This keeps addCompany's contract identical for every
+// existing caller (always returns a real numeric id, never throws on a
+// duplicate), so bulk-add-companies.js and POST /api/companies can call it
+// repeatedly with the same company and just get the same id back rather
+// than crashing or creating a second row.
 function addCompany(name, country, careerUrl, platform = 'custom', platformSlug = null, apiUrl = null) {
   const db = getDatabase();
   const stmt = db.prepare(
-    `INSERT INTO companies (name, country, career_url, platform, platform_slug, api_url) VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT OR IGNORE INTO companies (name, country, career_url, platform, platform_slug, api_url) VALUES (?, ?, ?, ?, ?, ?)`
   );
   stmt.bind([name, country, careerUrl, platform, platformSlug, apiUrl]);
   stmt.step();
   stmt.free();
+
+  if (db.getRowsModified() === 0) {
+    // UNIQUE(name, career_url) collision — INSERT OR IGNORE skipped it.
+    const existing = runQuery(
+      'SELECT id FROM companies WHERE name = ? AND career_url = ?',
+      [name, careerUrl]
+    );
+    return existing[0]?.id || null;
+  }
+
   const id = db.exec("SELECT last_insert_rowid()")[0].values[0][0];
   saveDatabase();
   return id;
+}
+
+// #29 — lets a caller (bulk-add-companies.js) check whether a company would
+// be a duplicate before doing expensive work (e.g. platform detection) for
+// it, and report "skipped" accurately instead of always claiming "added".
+function companyExists(name, careerUrl) {
+  const result = runQuery(
+    'SELECT id FROM companies WHERE name = ? AND career_url = ? LIMIT 1',
+    [name, careerUrl]
+  );
+  return result.length > 0;
 }
 
 function updateCompanyActive(companyId, active) {
@@ -85,7 +114,10 @@ function updateCompany(companyId, updates) {
 }
 
 function deleteCompany(companyId) {
-  // Delete associated positions first (foreign key constraint)
+  // #30 — schema.js now sets PRAGMA foreign_keys = ON, so this manual
+  // positions delete also cascades (via the declared ON DELETE CASCADE
+  // FKs) to position_profiles and tailored_resumes rows that pointed at
+  // those positions — no orphans left behind in either table.
   runWrite('DELETE FROM positions WHERE company_id = ?', [companyId]);
   // Then delete the company
   runWrite('DELETE FROM companies WHERE id = ?', [companyId]);
@@ -93,7 +125,10 @@ function deleteCompany(companyId) {
 
 function getCompanyById(companyId) {
   const result = runQuery('SELECT * FROM companies WHERE id = ?', [companyId]);
-  return result[0];
+  // #32 — standardize "not found" on null across query functions (was
+  // undefined here, null in getPositionById); every caller uses a truthy
+  // check so this is purely for consistency, not a behavior change.
+  return result[0] || null;
 }
 
 function getAllPositions() {
@@ -219,7 +254,7 @@ function getAllScrapeRuns() {
 
 function getScrapeRunById(runId) {
   const result = runQuery('SELECT * FROM scrape_runs WHERE id = ?', [runId]);
-  return result[0];
+  return result[0] || null; // #32 — standardize "not found" on null
 }
 
 // Profile functions
@@ -241,7 +276,7 @@ function getAllProfiles() {
 
 function getProfileById(profileId) {
   const result = runQuery('SELECT * FROM profiles WHERE id = ?', [profileId]);
-  return result[0];
+  return result[0] || null; // #32 — standardize "not found" on null
 }
 
 function updateProfile(profileId, name, resumeFile, jobTypes, secondaryCategory, seniorityLevel, yearsOfExperience = [], workLocationPreference = []) {
@@ -252,12 +287,21 @@ function updateProfile(profileId, name, resumeFile, jobTypes, secondaryCategory,
 }
 
 function deleteProfile(profileId) {
-  // Delete position_profiles links first (cascade would handle this, but being explicit)
+  // #30 — kept explicit for clarity, though PRAGMA foreign_keys = ON
+  // (schema.js) now means deleting the profiles row below would cascade
+  // this anyway. tailored_resumes.profile_id (not cleaned up manually
+  // anywhere) relies entirely on that cascade to avoid orphans.
   runWrite('DELETE FROM position_profiles WHERE profile_id = ?', [profileId]);
   runWrite('DELETE FROM profiles WHERE id = ?', [profileId]);
 }
 
 // Position-Profile join functions
+// #31 — previously caught every exception identically and returned false,
+// so an expected duplicate link (UNIQUE(position_id, profile_id) collision)
+// was indistinguishable from a genuine unexpected error (e.g. a NOT NULL
+// violation from a bad positionId/profileId). Mirror the
+// addPosition()/addTailoredResume() pattern: only treat the UNIQUE-collision
+// case as a harmless no-op; let anything else propagate.
 function linkPositionToProfile(positionId, profileId, matchScore = 0) {
   try {
     runWrite(
@@ -267,7 +311,11 @@ function linkPositionToProfile(positionId, profileId, matchScore = 0) {
     );
     return true;
   } catch (e) {
-    return false;
+    const errMsg = e.message || '';
+    if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('UNIQUE')) {
+      return false; // already linked — harmless no-op
+    }
+    throw e; // unexpected error — surface it rather than swallowing
   }
 }
 
@@ -281,16 +329,11 @@ function getProfilesForPosition(positionId) {
   `, [positionId]);
 }
 
-function getPositionsForProfile(profileId) {
-  return runQuery(`
-    SELECT pos.*, c.name as company_name, pp.match_score as profile_match_score
-    FROM positions pos
-    INNER JOIN position_profiles pp ON pos.id = pp.position_id
-    LEFT JOIN companies c ON pos.company_id = c.id
-    WHERE pp.profile_id = ?
-    ORDER BY pp.match_score DESC
-  `, [profileId]);
-}
+// #32 — getPositionsForProfile removed: it was dead code (zero callers
+// repo-wide, confirmed by grep in docs/review/unconfirmed/U3-database.md,
+// U3.4) and its JSON columns (location_type/years_experience/seniority_level)
+// were never parsed through ensureArray() like every other position
+// accessor, unlike getAllPositions/getPositionsByFilters/getPositionById.
 
 function updatePositionProfileScore(positionId, profileId, matchScore) {
   runWrite(
@@ -361,7 +404,7 @@ function getTailoredResumeById(tailoredResumeId) {
     LEFT JOIN companies c ON pos.company_id = c.id
     WHERE tr.id = ?
   `, [tailoredResumeId]);
-  return result[0];
+  return result[0] || null; // #32 — standardize "not found" on null
 }
 
 function getNextVersionForPositionProfile(positionId, profileId) {
@@ -380,6 +423,7 @@ module.exports = {
   getAllCompanies,
   getActiveCompanies,
   addCompany,
+  companyExists,
   updateCompanyActive,
   updateCompany,
   deleteCompany,
@@ -401,7 +445,6 @@ module.exports = {
   deleteProfile,
   linkPositionToProfile,
   getProfilesForPosition,
-  getPositionsForProfile,
   updatePositionProfileScore,
   unlinkPositionFromProfile,
   setTimeWindowPreference,
@@ -410,5 +453,11 @@ module.exports = {
   getTailoredResumesForPosition,
   getTailoredResumeById,
   getNextVersionForPositionProfile,
-  deleteTailoredResume
+  deleteTailoredResume,
+  // #28 — batched-write controls for bulk callers (see orchestrator.js's
+  // runScraper()). Re-exported from schema.js so callers only need one
+  // require ('../db/queries') for both querying and write-batching.
+  flushDatabase,
+  beginBatch,
+  endBatch
 };
