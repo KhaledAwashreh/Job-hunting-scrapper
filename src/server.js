@@ -56,6 +56,21 @@ function isValidHttpUrl(urlStr) {
   }
 }
 
+// Build a safe `Content-Disposition: attachment` header value from an untrusted
+// filename (e.g. one derived from a scraped job title). Strips control characters
+// (CR/LF etc., which would otherwise let a title inject arbitrary headers or crash
+// res.setHeader) and provides both a legacy ASCII-only filename="..." and a
+// percent-encoded filename*=UTF-8''... per RFC 6266, so non-ASCII titles still
+// round-trip for clients that support the extended form.
+function contentDispositionHeader(filename) {
+  const noControlChars = String(filename).replace(/[\x00-\x1F\x7F]/g, '');
+  const asciiFallback = noControlChars
+    .replace(/[^\x20-\x7E]/g, '_') // non-ASCII -> underscore
+    .replace(/["\\]/g, '_'); // quotes/backslashes would break the quoted-string form
+  const encoded = encodeURIComponent(noControlChars);
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 // Resolve a user-supplied resume filename to an absolute path guaranteed to
 // live inside RESUMES_DIR, or return null if it does not.
 //
@@ -121,29 +136,70 @@ const resumeUpload = multer({
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF, DOCX, and TXT allowed.'));
+      // Marked with .status so the error-handling middleware (see bottom of
+      // this file) recognizes this as a client-input error (400) rather than
+      // falling through to the generic 500 handler.
+      const err = new Error('Invalid file type. Only PDF, DOCX, and TXT allowed.');
+      err.status = 400;
+      cb(err);
     }
   }
 });
 const MIN_SCRAPE_INTERVAL_MS = 60000; // 1 minute
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
 
-// CORS middleware
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
-
-// Security headers middleware
+// Security headers middleware. Registered before express.static (#24) so
+// static assets (styles.css, countries.json, etc.) carry the same
+// Content-Security-Policy/X-Frame-Options/X-Content-Type-Options headers as
+// every other response instead of short-circuiting out of express.static
+// before ever reaching this middleware.
 app.use((req, res, next) => {
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'");
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  next();
+});
+
+app.use(express.static(path.join(__dirname, '../public')));
+
+// CORS middleware. The dashboard is served same-origin by this same process
+// (see the '/' route below), so a browser visiting it never needs a CORS
+// grant at all. ALLOWED_ORIGIN exists only for the case of a separate
+// frontend (e.g. a dev server on another port) that legitimately needs
+// cross-origin access; left unset, no Access-Control-Allow-Origin header is
+// ever sent, so a same-site-only browser (any origin, including a page an
+// attacker got the user to open) fails CORS preflight on every
+// state-changing request and the browser refuses to send it.
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || null;
+app.use((req, res, next) => {
+  if (ALLOWED_ORIGIN && req.headers.origin === ALLOWED_ORIGIN) {
+    res.header('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Token');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// Shared-secret auth for state-changing requests. Off by default (no
+// friction for the common case: a single local user hitting the dashboard
+// on localhost), but set API_TOKEN to require every POST/PATCH/DELETE to
+// carry a matching X-API-Token header — e.g. when exposing this server
+// beyond localhost, since it holds real personal data and a paid LLM
+// endpoint. CORS restriction alone only stops *browser* cross-origin
+// requests; it does nothing against a direct curl/script request, which is
+// what this closes.
+const API_TOKEN = process.env.API_TOKEN || null;
+if (!API_TOKEN) {
+  console.warn('API_TOKEN is not set: mutating API routes are unauthenticated. Set API_TOKEN to require a shared secret on POST/PATCH/DELETE requests.');
+}
+const MUTATING_METHODS = new Set(['POST', 'PATCH', 'DELETE']);
+app.use((req, res, next) => {
+  if (!API_TOKEN || !MUTATING_METHODS.has(req.method)) return next();
+  if (req.header('X-API-Token') !== API_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   next();
 });
 
@@ -159,22 +215,40 @@ app.use((req, res, next) => {
   next();
 });
 
-// Input validation middleware
-const validateCompanyInput = (req, res, next) => {
-  const { name, country, career_url, platform } = req.body;
-  
-  if (!name || typeof name !== 'string' || name.length === 0 || name.length > 255) {
-    return res.status(400).json({ error: 'Invalid name (1-255 characters required)' });
+// Shared company-field validation, used by both POST (full body, every
+// field required) and PATCH (partial body — #22: PATCH used to skip
+// validation entirely, letting invalid values like a bogus platform or an
+// empty name silently persist). In partial mode a field that is simply
+// absent from the request body is skipped (PATCH allows partial updates);
+// a field that IS present is validated with the exact same rule as POST.
+function validateCompanyFields(fields, { partial = false } = {}) {
+  const { name, country, career_url, platform } = fields;
+
+  if (!partial || name !== undefined) {
+    if (!name || typeof name !== 'string' || name.length === 0 || name.length > 255) {
+      return 'Invalid name (1-255 characters required)';
+    }
   }
-  if (!country || typeof country !== 'string' || country.length === 0 || country.length > 100) {
-    return res.status(400).json({ error: 'Invalid country (1-100 characters required)' });
+  if (!partial || country !== undefined) {
+    if (!country || typeof country !== 'string' || country.length === 0 || country.length > 100) {
+      return 'Invalid country (1-100 characters required)';
+    }
   }
-  if (!isValidHttpUrl(career_url)) {
-    return res.status(400).json({ error: 'Invalid URL format (must be http/https)' });
+  if (!partial || career_url !== undefined) {
+    if (!isValidHttpUrl(career_url)) {
+      return 'Invalid URL format (must be http/https)';
+    }
   }
   if (platform && !['greenhouse', 'lever', 'workday', 'custom', 'rss', 'json_api', 'workable'].includes(platform)) {
-    return res.status(400).json({ error: 'Invalid platform' });
+    return 'Invalid platform';
   }
+  return null;
+}
+
+// Input validation middleware
+const validateCompanyInput = (req, res, next) => {
+  const error = validateCompanyFields(req.body, { partial: false });
+  if (error) return res.status(400).json({ error });
   next();
 };
 
@@ -254,6 +328,10 @@ app.patch('/api/positions/:id/status', (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
+    if (!getPositionById(id)) {
+      return res.status(404).json({ error: 'Position not found' });
+    }
+
     updatePositionStatus(id, status);
     const updated = getPositionById(id);
     res.json(updated);
@@ -289,6 +367,18 @@ app.patch('/api/companies/:id', (req, res) => {
     const { id } = req.params;
     const { name, country, career_url, platform, platform_slug, api_url, active } = req.body;
 
+    // #22: apply the same validation POST uses (in partial mode — only
+    // fields actually present in the body are checked), so an invalid
+    // career_url/platform/name can no longer silently persist via PATCH.
+    const validationError = validateCompanyFields(req.body, { partial: true });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
+    if (!getCompanyById(id)) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
     // Build updates object with only provided fields
     const updates = {};
     if (name !== undefined) updates.name = name;
@@ -318,6 +408,9 @@ app.patch('/api/companies/:id', (req, res) => {
 app.delete('/api/companies/:id', (req, res) => {
   try {
     const { id } = req.params;
+    if (!getCompanyById(id)) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
     deleteCompany(id);
     res.json({ success: true, message: 'Company deleted' });
   } catch (error) {
@@ -506,6 +599,10 @@ app.patch('/api/profiles/:id', validateProfileInput, (req, res) => {
     const { id } = req.params;
     const { name, resume_file, job_types, secondary_category, seniority_level, years_of_experience = [], work_location_preference = [] } = req.body;
 
+    if (!getProfileById(id)) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
     updateProfile(id, name, resume_file, job_types, secondary_category || null, seniority_level || null, years_of_experience, work_location_preference);
     const updated = getProfileById(id);
     try {
@@ -527,6 +624,9 @@ app.patch('/api/profiles/:id', validateProfileInput, (req, res) => {
 app.delete('/api/profiles/:id', (req, res) => {
   try {
     const { id } = req.params;
+    if (!getProfileById(id)) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
     deleteProfile(id);
     res.json({ message: 'Profile deleted' });
   } catch (error) {
@@ -535,8 +635,43 @@ app.delete('/api/profiles/:id', (req, res) => {
 });
 
 // ===== Tailored Resumes API =====
+
+// Rate limiting for the resume-tailor endpoint (#23). It invokes a paid
+// Anthropic LLM call on every request with no other throttle, unlike
+// POST /api/scrape/run above -- a bug (retry loop, double-click) or an
+// unauthenticated caller (see the CORS/API_TOKEN comments earlier in this
+// file) could otherwise run up unbounded LLM spend. Simple in-process
+// sliding-window counter keyed by client IP; a Map of timestamps is enough
+// for a single-user local tool and needs no new dependency. TAILOR_RATE_LIMIT_MAX
+// of 10 requests per minute is generous for normal interactive use (a person
+// clicking "Tailor" a few times while comparing profiles/versions) but caps
+// runaway cost from automation or abuse.
+const TAILOR_RATE_LIMIT_MAX = 10;
+const TAILOR_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const tailorRequestLog = new Map(); // ip -> array of request timestamps (ms)
+
+function tailorRateLimit(req, res, next) {
+  const key = req.ip || 'unknown';
+  const now = Date.now();
+  const windowStart = now - TAILOR_RATE_LIMIT_WINDOW_MS;
+  const timestamps = (tailorRequestLog.get(key) || []).filter(t => t > windowStart);
+
+  if (timestamps.length >= TAILOR_RATE_LIMIT_MAX) {
+    const retryAfter = Math.ceil((timestamps[0] + TAILOR_RATE_LIMIT_WINDOW_MS - now) / 1000);
+    tailorRequestLog.set(key, timestamps);
+    return res.status(429).json({
+      error: 'Too many resume-tailoring requests. Please wait before trying again.',
+      retryAfter
+    });
+  }
+
+  timestamps.push(now);
+  tailorRequestLog.set(key, timestamps);
+  next();
+}
+
 // Generate a new tailored resume for a position
-app.post('/api/positions/:positionId/tailor', async (req, res) => {
+app.post('/api/positions/:positionId/tailor', tailorRateLimit, async (req, res) => {
   try {
     const { positionId } = req.params;
     const { profileId } = req.body;
@@ -665,6 +800,9 @@ app.get('/api/tailored-resumes/:id', (req, res) => {
 app.delete('/api/tailored-resumes/:id', (req, res) => {
   try {
     const { id } = req.params;
+    if (!getTailoredResumeById(id)) {
+      return res.status(404).json({ error: 'Tailored resume not found' });
+    }
     deleteTailoredResume(id);
     res.json({ message: 'Tailored resume deleted' });
   } catch (error) {
@@ -687,7 +825,7 @@ app.get('/api/tailored-resumes/:id/download', async (req, res) => {
 
     if (format === 'txt') {
       res.setHeader('Content-Type', 'text/plain');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', contentDispositionHeader(filename));
       return res.send(tailoredResume.tailored_text);
     }
 
@@ -733,7 +871,7 @@ app.get('/api/tailored-resumes/:id/download', async (req, res) => {
 
       const buffer = await Packer.toBuffer(doc);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', contentDispositionHeader(filename));
       return res.send(buffer);
     }
 
@@ -784,7 +922,7 @@ app.get('/api/tailored-resumes/:id/download', async (req, res) => {
 
       const pdfBytes = await pdfDoc.save();
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', contentDispositionHeader(filename));
       return res.send(Buffer.from(pdfBytes));
     }
 
@@ -857,7 +995,26 @@ app.use((req, res) => {
 });
 
 // ===== Error handling =====
+// #21: malformed JSON bodies and rejected uploads were both reaching this
+// handler and being coerced to a generic 500, discarding the specific
+// client-input error (and, for JSON, actively downgrading a 400 into a 500).
+// body-parser (used by express.json()) sets err.status = 400 and
+// err.type = 'entity.parse.failed' on malformed JSON; multer sets
+// err instanceof MulterError for its own rule violations (e.g. the file size
+// limit); the fileFilter above marks its own rejection errors with
+// err.status = 400 so they're recognized the same way. Anything else
+// (unexpected exceptions, DB failures, etc.) still falls through to 500.
 app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode;
+  const isClientError =
+    err.type === 'entity.parse.failed' ||
+    err instanceof multer.MulterError ||
+    (typeof status === 'number' && status >= 400 && status < 500);
+
+  if (isClientError) {
+    return res.status(status || 400).json({ error: err.message || 'Invalid request' });
+  }
+
   console.error('Express error:', err);
   return res.status(500).json({ error: 'Internal server error' });
 });
@@ -890,16 +1047,43 @@ startup().then(() => {
   function gracefulShutdown() {
     console.log('\nGraceful shutdown initiated...');
 
-    // Stop accepting new requests
-    server.close(() => {
-      console.log('HTTP server closed');
-    });
+    // #25: previously process.exit(0) ran synchronously right after issuing
+    // server.close(), without ever awaiting its callback -- under a real
+    // SIGTERM the process exited before in-flight requests finished, dropping
+    // roughly a third of them in testing. Now we track both "HTTP server
+    // fully closed" and "no scrape still running" and only exit once both are
+    // true, with a hard timeout as a fallback for requests/scrapes that never
+    // finish.
+    let serverClosed = false;
+    let scraperDone = false;
+    let forced = false;
 
-    // Wait for ongoing scrape to finish (with timeout)
     const shutdownTimeout = setTimeout(() => {
-      console.error('Forced shutdown: scrape took too long');
+      forced = true;
+      console.error('Forced shutdown: server close / scrape took too long');
       process.exit(1);
     }, 30000); // 30 second timeout
+
+    function maybeExit() {
+      if (forced || !serverClosed || !scraperDone) return;
+      clearTimeout(shutdownTimeout);
+      console.log('Shutting down');
+      process.exit(0);
+    }
+
+    // Stop accepting new connections; wait for in-flight requests to finish.
+    server.close(() => {
+      serverClosed = true;
+      console.log('HTTP server closed');
+      maybeExit();
+    });
+    // Idle keep-alive sockets (no request in progress) would otherwise sit
+    // open until the keep-alive timeout and delay the close() callback above
+    // for no reason; closing them immediately doesn't affect in-flight
+    // requests, which keep their own sockets until their response is sent.
+    if (typeof server.closeIdleConnections === 'function') {
+      server.closeIdleConnections();
+    }
 
     // Check scraper status
     const status = getRunStatus();
@@ -908,14 +1092,14 @@ startup().then(() => {
       const waitInterval = setInterval(() => {
         if (!getRunStatus().running) {
           clearInterval(waitInterval);
-          clearTimeout(shutdownTimeout);
-          console.log('Scrape completed, shutting down');
-          process.exit(0);
+          scraperDone = true;
+          console.log('Scrape completed');
+          maybeExit();
         }
       }, 1000);
     } else {
-      clearTimeout(shutdownTimeout);
-      process.exit(0);
+      scraperDone = true;
+      maybeExit();
     }
   }
 }).catch(error => {
