@@ -240,7 +240,13 @@ async function scrapeWithPuppeteer(url, company) {
       jobs.push({
         title: j.title,
         description: description.substring(0, 2000),
-        link: j.link || url,
+        // No fallback to the listing `url` here: multiple link-less job
+        // cards would otherwise all get the *same* link, which both breaks
+        // the UI's "View" button (it points at the listing page, not the
+        // job) and can collide in job-dedup hashing if they also share
+        // title/description. '' matches this file's own convention for a
+        // missing link elsewhere (see e.g. scrapeWithFirecrawlAgent above).
+        link: j.link || '',
         company: company?.name || '',
         country: company?.country || ''
       });
@@ -250,12 +256,21 @@ async function scrapeWithPuppeteer(url, company) {
     const detailUrls = jobs.slice(0, 5).map(j => j.link).filter(l => l && l.startsWith('http'));
     for (const jobUrl of detailUrls) {
       try {
-        await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+        const response = await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 15000 });
         await new Promise(resolve => setTimeout(resolve, 1000));
-        
+
+        // A 404 (or any non-2xx) detail page still resolves normally from
+        // page.goto() — it doesn't throw or reject — but its <title>/meta
+        // description (e.g. "Page Not Found") must not be allowed to
+        // silently overwrite the good listing-page data already in `jobs`.
+        const status = response ? response.status() : null;
+        if (status !== null && (status < 200 || status >= 300)) {
+          continue;
+        }
+
         const jobContent = await page.content();
         const jobInfo = extractJobFromHTML(jobContent, jobUrl, company);
-        
+
         // Match with existing job
         const existing = jobs.find(j => j.link === jobUrl);
         if (existing && jobInfo.title) {
@@ -563,11 +578,16 @@ async function tryDirectAPIScrape(careerUrl, company) {
   // Try Greenhouse API for any boards.greenhouse.io URL
   if (lower.includes('boards.greenhouse.io') || lower.includes('greenhouse.io')) {
     try {
-      const slug = careerUrl.match(/greenhouse\.io\/([^/?]+)/i);
+      // Reuse apiAgent's already-fixed slug detection (issue #39) rather
+      // than a second, naive regex here — a plain
+      // /greenhouse\.io\/([^/?]+)/ match mis-extracts the slug for the
+      // `{slug}.boards.greenhouse.io` subdomain form.
+      const { detectGreenhouseSlug } = require('./apiAgent');
+      const slug = detectGreenhouseSlug(careerUrl);
       if (slug) {
-        console.log(`  → Direct Greenhouse API attempt: ${slug[1]}`);
+        console.log(`  → Direct Greenhouse API attempt: ${slug}`);
         const { scrapeGreenhouse } = require('./apiAgent');
-        const jobs = await scrapeGreenhouse(slug[1]);
+        const jobs = await scrapeGreenhouse(slug);
         if (jobs && jobs.length > 0) return jobs;
       }
     } catch (e) { /* fall through */ }
@@ -576,14 +596,20 @@ async function tryDirectAPIScrape(careerUrl, company) {
   // Try Lever API for any jobs.lever.co URL
   if (lower.includes('jobs.lever.co') || lower.includes('lever.co')) {
     try {
-      const slug = careerUrl.match(/lever\.co\/([^/?]+)/i);
+      // Reuse apiAgent's already-fixed slug detection (issue #39) — a plain
+      // /lever\.co\/([^/?]+)/ match mis-extracts "v0" as the slug for
+      // api.lever.co/v0/postings/{slug} URLs.
+      const { detectLeverSlug } = require('./apiAgent');
+      const slug = detectLeverSlug(careerUrl);
       if (slug) {
-        console.log(`  → Direct Lever API attempt: ${slug[1]}`);
+        console.log(`  → Direct Lever API attempt: ${slug}`);
         const { scrapeLever } = require('./apiAgent');
-        const jobs = await scrapeLever(slug[1]);
+        const jobs = await scrapeLever(slug);
         if (jobs && jobs.length > 0) return jobs;
       } else {
-        // Try extracting the company name from the URL path
+        // Not part of the #39 bug/fix: kept as-is. Fallback for URL shapes
+        // detectLeverSlug doesn't recognize — try extracting the company
+        // name from the URL path.
         const pathParts = careerUrl.split('/').filter(Boolean);
         const companyName = pathParts[pathParts.length - 1]?.replace(/[?#].*$/, '');
         if (companyName && companyName !== 'jobs') {
