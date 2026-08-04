@@ -76,3 +76,40 @@ describe('isEngineeringRelevantTitle — no false positives introduced', () => {
     assert.equal(isEngineeringRelevantTitle('Platform Engineer'), true);
   });
 });
+
+// Found during MVP functional testing: a live scrape of Adyen's Greenhouse
+// board stored "Product Financial Controller, Balance Platform" as a
+// "Platform Engineer" — the word "Platform" matched the profile and nothing
+// rejected the title, so a finance role became the first row of the
+// Positions tab.
+//
+// The existing list has /\bfinance\b/ but no /\bfinancial\b/, so
+// "Financial Controller" passed straight through.
+//
+// The fix must stay narrow: this user's search profiles deliberately target
+// fintech (see data/search-params.csv — "Fintech" for Portugal), so a title
+// is only rejected on a finance signal when it carries no engineering
+// role-noun. "Staff Engineer (Java) - Merchant Fraud Prevention" and
+// "Senior Engineer, Financial Crime" are engineering jobs and must survive.
+describe('isEngineeringRelevantTitle — finance-function titles (MVP functional testing)', () => {
+  test('"Product Financial Controller, Balance Platform" is rejected', () => {
+    assert.equal(isEngineeringRelevantTitle('Product Financial Controller, Balance Platform'), false);
+  });
+
+  test('a plain "Financial Controller" is rejected', () => {
+    assert.equal(isEngineeringRelevantTitle('Financial Controller'), false);
+  });
+
+  test('other finance-function titles with no engineering role-noun are rejected', () => {
+    assert.equal(isEngineeringRelevantTitle('Financial Analyst'), false);
+    assert.equal(isEngineeringRelevantTitle('Treasury Manager'), false);
+    assert.equal(isEngineeringRelevantTitle('Payroll Specialist'), false);
+  });
+
+  test('fintech ENGINEERING titles are NOT rejected by the finance signal', () => {
+    assert.equal(isEngineeringRelevantTitle('Senior Engineer, Financial Crime'), true);
+    assert.equal(isEngineeringRelevantTitle('Staff Engineer (Java) - Merchant Fraud Prevention'), true);
+    assert.equal(isEngineeringRelevantTitle('Backend Developer, Financial Reporting'), true);
+    assert.equal(isEngineeringRelevantTitle('Software Architect, Payments and Treasury'), true);
+  });
+});

@@ -10,7 +10,7 @@ Scrapes engineering job openings from any company career page, scores them again
 - **AI scoring** — Scores jobs 0–100 against your resume(s) using Claude/Ollama/OpenAI (model-agnostic)
 - **Resume tailoring** — Generates Harvard CV format resumes tailored to each position
 - **Deduplication** — Hash-based job dedup across scrape runs
-- **Dashboards** — 5-tab UI: Positions, Companies, Profiles, Run Log, Dashboard
+- **Dashboards** — 4-tab UI: Positions, Companies, Profiles, Run Log
 
 ## Quick Start
 
@@ -90,7 +90,6 @@ Only roles matching your profiles (title + engineering relevance) are stored.
 | **Companies** | Add/manage career URLs. Platform auto-detection. Toggle active/inactive. |
 | **Profiles** | Create named profiles (e.g. "Java Backend", "Platform Engineer") with resume assignment, job types, seniority, work location preferences. |
 | **Run Log** | View scrape history, start new runs, expand error details per company. |
-| **Dashboard** | System status, resume cache info, quick stats. |
 
 ## Actions Column
 
@@ -148,7 +147,7 @@ Produces a Harvard CV format resume for any position:
 │   ├── config.js                  # Model configuration
 │   └── server.js                  # Express server + all API routes
 ├── public/
-│   ├── dashboard.html             # Main UI (5 tabs)
+│   ├── dashboard.html             # Main UI (4 tabs)
 │   └── components/
 │       ├── positions-tab.js       # Positions table with filtering + actions
 │       └── profiles-tab.js        # Profile CRUD

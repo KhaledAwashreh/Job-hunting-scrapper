@@ -469,6 +469,24 @@ function isEngineeringRelevantTitle(title) {
     return false;
   }
 
+  // Finance-function titles. The list above has /\bfinance\b/ but not
+  // "financial", which let "Product Financial Controller, Balance Platform"
+  // through on a live Adyen scrape — "Platform" matched the profile and a
+  // finance role landed at the top of the Positions tab.
+  //
+  // This cannot be a blanket reject: these search profiles deliberately target
+  // fintech (data/search-params.csv), where "Senior Engineer, Financial Crime"
+  // and "Backend Developer, Financial Reporting" are exactly the roles wanted.
+  // So a finance signal only disqualifies a title that carries no engineering
+  // role-noun of its own. "Controller" is likewise ambiguous — it names a
+  // finance function here but an engineering one in "Kubernetes Controller
+  // Engineer" — and the same guard resolves it.
+  const FINANCE_FUNCTION = /\b(financial|controller|treasury|payroll|bookkeeping|taxation)\b/;
+  const ENGINEERING_ROLE_NOUN = /\b(engineer|engineers|engineering|developer|programmer|architect|sre|devops)\b/;
+  if (FINANCE_FUNCTION.test(t) && !ENGINEERING_ROLE_NOUN.test(t)) {
+    return false;
+  }
+
   return true;
 }
 
