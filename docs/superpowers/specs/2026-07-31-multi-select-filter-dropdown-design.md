@@ -117,6 +117,16 @@ resolution are unchanged.
 
 ### Positions tab
 
+**Correction from the original draft:** Country is *not* client-side-filtered
+today the way Job Type/Location/Level are — `loadPositions()` currently sends
+the selected country as a `?country=` query param and the server (via
+`getPositionsByFilters`) narrows the result set before it ever reaches the
+browser. Only `Status` (untouched by this change) stays server-filtered.
+Country moves to client-side filtering as part of this change, confirmed
+with the repo owner: no server/API change, `country` is dropped from the
+query string entirely, and Country becomes a filter predicate over the
+already-loaded `this.positions` list, exactly like the other three.
+
 `dashboard.html`: the `<select>` elements for `#countryFilter`,
 `#filterLocation`, `#filterLevel` are replaced with empty mount `<div>`s; the
 top-bar `#jobTypeFilter` `<select>` is removed entirely; `#filterJobType`'s
@@ -125,8 +135,11 @@ filter). `#statusFilter` is untouched.
 
 `positions-tab.js`:
 - `filterJobType`, `filterLocation`, `filterLevel` become `Set<string>`
-  instead of `string|null`; `filterCountry` (currently read inline from the
-  DOM in `loadPositions()`) becomes a tracked `Set<string>` the same way.
+  instead of `string|null`; a new `filterCountry` `Set<string>` is added
+  alongside them (replacing the direct DOM read of `#countryFilter.value`
+  in `loadPositions()`).
+- `loadPositions()` no longer reads `#countryFilter` or sets a `country`
+  query param — only `status` is sent to the server now.
 - The `renderPositions()` filter predicate changes from equality/`.includes()`
   checks against a single value to "selection is empty, or there's an
   overlap between the position's value(s) and the selected set":
@@ -148,7 +161,11 @@ Playwright e2e tests (`test/e2e/*.e2e.js`), so that's what's extended:
 
 - **Update existing tests** for the new markup/selectors:
   `companies-country-filter.e2e.js`, `positions-filters.e2e.js`,
-  `positions-listener-leak.e2e.js`.
+  `positions-listener-leak.e2e.js`. The latter's second test currently proves
+  the request-sequencing guard by racing two *server* responses keyed by the
+  `country` query param — since Country moves client-side and no longer
+  triggers a fetch, that test is rewritten to race two `status` changes
+  instead (the guard itself is unchanged, only what triggers a fetch is).
 - **New coverage:**
   - Search narrows the visible option list (by label substring, case-insensitive).
   - Select All / Clear All operate on the filtered (searched) subset, not the full list.
