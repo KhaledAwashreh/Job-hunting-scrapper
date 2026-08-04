@@ -1,5 +1,14 @@
 # U2 — Server routes (UNCONFIRMED)
 
+> ## RESOLUTION — all 4 items fixed (audited 2026-08-04)
+>
+> | Item | Status | Where |
+> |---|---|---|
+> | U2.1 static assets bypass security headers | fixed | header middleware moved ahead of `express.static` (#24); `test/e2e/static-security-headers.e2e.js` |
+> | U2.2 client errors returned as 500 | fixed | input validation returns 400 (#21, #22) |
+> | U2.3 `200 null` on missing ids | fixed | mutating routes 404 on missing rows (#19, #20); `test/e2e/mutating-routes-404.e2e.js` |
+> | U2.4 non-graceful shutdown | fixed | `gracefulShutdown` awaits `server.close()` (#25); `test/e2e/graceful-shutdown.e2e.js` |
+
 **Status:** reported by one reviewer, NOT independently verified
 **Files:** `src/server.js`
 

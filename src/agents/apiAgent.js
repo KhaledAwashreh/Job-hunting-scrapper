@@ -165,7 +165,7 @@ async function scrapeGreenhouse(slug) {
       title: job.title || '',
       description: job.content || '',
       qualifications: extractQualifications(job.content),
-      publishDate: job.updated_at ? new Date(job.updated_at).toISOString().split('T')[0] : '',
+      publishDate: toISODateOrEmpty(job.updated_at),
       link: job.absolute_url || '',
       country: extractCountry(job.location?.name) || ''
     })).filter(j => j.title);
@@ -222,7 +222,7 @@ async function scrapeLever(slug) {
       title: job.text || job.title || '',
       description: (job.content?.text || job.description || '').substring(0, 2000),
       qualifications: extractQualifications(job.content?.text || job.description || ''),
-      publishDate: job.createdAt ? new Date(job.createdAt).toISOString().split('T')[0] :
+      publishDate: job.createdAt ? toISODateOrEmpty(job.createdAt) :
                    job.publishDate || '',
       link: job.hostedUrl || job.absolute_url || '',
       country: extractCountry(
@@ -310,14 +310,7 @@ function parseRSSJobs(xmlText, baseUrl) {
     const pubDate = getField('pubDate');
     // Guard per-item: a single malformed pubDate must not throw and discard the
     // whole feed (RangeError from toISOString() on an invalid date string).
-    let publishDate = '';
-    if (pubDate) {
-      try {
-        publishDate = new Date(pubDate).toISOString().split('T')[0];
-      } catch (err) {
-        publishDate = '';
-      }
-    }
+    const publishDate = toISODateOrEmpty(pubDate);
     const category = getField('category');
 
     // Try to extract country/location from title (common in RSS: "Title - City, Country")
@@ -842,6 +835,20 @@ function formatDate(dateStr) {
   } catch {
     return dateStr;
   }
+}
+
+// #54 — `new Date(x).toISOString()` throws RangeError on an unparseable value.
+// Called bare inside a `.map()` over a feed, one bad date takes down the whole
+// company's batch: the outer catch swallows it and returns `null`, which the
+// orchestrator reads as "the API call failed" and answers by falling back to
+// browser scraping for a company whose API in fact replied correctly.
+// An unparseable date is not a reason to drop a usable job — hand back '',
+// exactly as these scrapers already do for a date that is simply absent.
+function toISODateOrEmpty(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().split('T')[0];
 }
 
 module.exports = {

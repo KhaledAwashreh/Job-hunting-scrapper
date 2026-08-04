@@ -1,5 +1,16 @@
 # U5 — Matching, scoring and maintenance scripts (VERIFIED)
 
+> ## RESOLUTION — all 6 items fixed (audited 2026-08-04)
+>
+> | Item | Status | Where |
+> |---|---|---|
+> | U5.1 scoring returns 0 on fenced/prose JSON | fixed | fence-stripping + brace-slice fallback in `relevanceScorer.js` (#44, #50) |
+> | U5.2 `matched_resume` unvalidated | fixed | validated as an in-range integer (#45) |
+> | U5.3 CSV stores invalid seniority | fixed | rejected, not warned-and-stored (#46, #52) |
+> | U5.4 "Design System Engineer" rejected | fixed | adjacency-tolerant negative lookahead (#47, #48) |
+> | U5.5 `bulk-add-companies.js` duplicates | fixed | `companyExists()` pre-check + UNIQUE index (#29) |
+> | U5.6 stale validation scripts | fixed | both deleted (#49) |
+
 **Status:** independently verified against a local OpenAI-protocol stub (no real LLM calls) and temp SQLite DBs
 (no real `jobs.db` touched). All six claims CONFIRMED; two carry a correction to the reviewers' stated
 mechanism (U5.2, U5.6) and severity was revised for two (U5.4 downgraded Medium→Low, U5.1 scoped to

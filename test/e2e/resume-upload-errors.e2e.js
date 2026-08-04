@@ -21,10 +21,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { startServer, findBrowser, realDbFingerprint, assertRealDbUntouched } = require('./helpers/harness');
+const {
+  startServer,
+  findBrowser,
+  realDbFingerprint,
+  assertRealDbUntouched,
+  realResumesFingerprint,
+  assertRealResumesUntouched
+} = require('./helpers/harness');
 
-const REPO_ROOT = path.join(__dirname, '../..');
-const REAL_RESUMES_DIR = path.join(REPO_ROOT, 'data/resumes');
 const browserEnv = findBrowser();
 
 function uploadFormData(filename, mimeType, content) {
@@ -36,12 +41,12 @@ function uploadFormData(filename, mimeType, content) {
 describe('POST /api/resumes/upload — distinguishable failure reasons (issue #16)', () => {
   let server;
   let dbBefore;
+  let resumesBefore;
   let resumesDir;
 
   before(async () => {
     dbBefore = realDbFingerprint();
-    assert.equal(fs.existsSync(REAL_RESUMES_DIR), false,
-      'sanity check: the repo\'s real data/resumes/ must not exist before this test runs');
+    resumesBefore = realResumesFingerprint();
 
     resumesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobhunter-resumes-'));
     server = await startServer({ RESUMES_DIR: resumesDir });
@@ -57,7 +62,7 @@ describe('POST /api/resumes/upload — distinguishable failure reasons (issue #1
   });
 
   test('the repo\'s real data/resumes/ is never created or written to', () => {
-    assert.equal(fs.existsSync(REAL_RESUMES_DIR), false);
+    assertRealResumesUntouched(resumesBefore, assert);
   });
 
   test('a .doc upload is rejected with 400 and a specific reason, not a generic 500', async () => {

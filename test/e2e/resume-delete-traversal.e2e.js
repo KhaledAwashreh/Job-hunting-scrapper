@@ -18,10 +18,13 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 
-const { startServer, realDbFingerprint, assertRealDbUntouched } = require('./helpers/harness');
-
-const REPO_ROOT = path.join(__dirname, '../..');
-const REAL_RESUMES_DIR = path.join(REPO_ROOT, 'data/resumes');
+const {
+  startServer,
+  realDbFingerprint,
+  assertRealDbUntouched,
+  realResumesFingerprint,
+  assertRealResumesUntouched
+} = require('./helpers/harness');
 
 // fetch()/curl both normalise a literal '..' path segment away client-side
 // (per the WHATWG URL spec's dot-segment removal) before the request ever
@@ -44,6 +47,7 @@ function rawRequest(port, rawPath, method = 'DELETE') {
 describe('DELETE /api/resumes/:filename — path traversal containment (A4.1)', () => {
   let server;
   let dbBefore;
+  let resumesBefore;
   let resumesDir;
   let canaryDir;
   let canaryFile;
@@ -51,8 +55,7 @@ describe('DELETE /api/resumes/:filename — path traversal containment (A4.1)', 
 
   before(async () => {
     dbBefore = realDbFingerprint();
-    assert.equal(fs.existsSync(REAL_RESUMES_DIR), false,
-      'sanity check: the repo\'s real data/resumes/ must not exist before this test runs');
+    resumesBefore = realResumesFingerprint();
 
     resumesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jobhunter-resumes-'));
     fs.writeFileSync(path.join(resumesDir, 'resume.txt'), 'legit resume content');
@@ -77,7 +80,7 @@ describe('DELETE /api/resumes/:filename — path traversal containment (A4.1)', 
   });
 
   test('the repo\'s real data/resumes/ is never created or written to', () => {
-    assert.equal(fs.existsSync(REAL_RESUMES_DIR), false);
+    assertRealResumesUntouched(resumesBefore, assert);
   });
 
   test('encoded ../ traversal to a file outside the resumes dir is rejected with 400, and the file survives', async () => {

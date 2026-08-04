@@ -1,5 +1,20 @@
 # U4 — Scraper parsing and fallbacks (UNCONFIRMED)
 
+> ## RESOLUTION — all 5 items fixed; U4.1 was only half-fixed until 2026-08-04
+>
+> | Item | Status | Where |
+> |---|---|---|
+> | U4.1 one malformed date discards a feed | **RSS** fixed earlier (#33); **Greenhouse + Lever were missed** and stayed broken — fixed 2026-08-04 via `toISODateOrEmpty()` (#54), `test/api-agent.malformed-dates.test.js` |
+> | U4.2 `scrapeJSONAPI` object `location` | fixed | `extractCountry` accepts objects; pagination + relative links too |
+> | U4.3 career-page URL used as job link | fixed | safe link fallback (#35) |
+> | U4.4 404 detail page overwrites a title | fixed | non-2xx detail responses skipped (#36) |
+> | U4.5 dead reliability code | fixed | removed (#37, #49) |
+>
+> **Note on U4.1's severity:** by the time it was fixed it was worse than reported. Commit `c18b95e` (#38)
+> changed the outer catch to return `null` rather than `[]`, so a single unparseable `updated_at`/`createdAt`
+> made the orchestrator treat a perfectly healthy API response as a failed call and fall through to the slow
+> Firecrawl/Puppeteer path for that company.
+
 **Status:** independently verified 2026-07-30 — see per-claim "Verdict" sections below. All five original
 claims CONFIRMED (mechanism correct in every case); severities adjusted for two of them (U4.1 split by feed
 type — RSS stays Critical, Greenhouse/Lever downgraded to Low; others unchanged). This document is still filed

@@ -1,5 +1,14 @@
 # U3 — Database layer (UNCONFIRMED)
 
+> ## RESOLUTION — all 4 items fixed (audited 2026-08-04)
+>
+> | Item | Status | Where |
+> |---|---|---|
+> | U3.1 concurrent writers lose data | fixed | advisory `jobs.db.lock` held for the process lifetime + batched writes (#26, #28) |
+> | U3.2 no UNIQUE on companies | fixed | `UNIQUE(name, career_url)` + `CREATE UNIQUE INDEX` migration with a loud failure on pre-existing duplicates (#29) |
+> | U3.3 inconsistent not-found shapes | fixed | standardized (#32) |
+> | U3.4 `getPositionsForProfile` unparsed JSON | fixed | removed as dead code (#32) |
+
 **Status:** independently verified 2026-07-30. U3.1 CONFIRMED (mechanism reproduced) but
 CORRECTED on reachability/severity — split into a Medium cross-process file-clobber hazard and a
 newly-surfaced Low-Medium same-process tailor-resume race. U3.2 CONFIRMED as described, including

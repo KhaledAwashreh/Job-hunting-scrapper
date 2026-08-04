@@ -1,5 +1,14 @@
 # U1 — Frontend (INDEPENDENTLY VERIFIED)
 
+> ## RESOLUTION — all 4 items fixed (audited 2026-08-04)
+>
+> | Item | Status | Where |
+> |---|---|---|
+> | U1.1 stored XSS | fixed | `escapeHtml()` + `safeHref()` in all three components (#9); covered by `test/e2e/xss-escaping.e2e.js` |
+> | U1.2 listener leak + stale-response race | fixed | `initialized` guard **and** the `loadRequestId` sequencing guard in `loadPositions()` (#10) |
+> | U1.3 dead `#jobTypeFilter` | fixed | value now read and applied in `renderPositions()` (#11) |
+> | U1.4 three unpopulated selects | fixed | `updateFilterJobType/Location/Level()` populate them (#12) |
+
 **Status:** independently verified against the current tree (post commit 20d4b57, the `parseArray`/A6 fix).
 All four claims: CONFIRMED. See per-claim VERDICT sections below for method, live evidence, and the exact
 commands/output. Verified with the real server (`src/server.js`) booted against an isolated tmp-dir database

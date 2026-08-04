@@ -13,6 +13,7 @@ const net = require('net');
 
 const REPO_ROOT = path.join(__dirname, '../../..');
 const REAL_DB = path.join(REPO_ROOT, 'jobs.db');
+const REAL_RESUMES_DIR = path.join(REPO_ROOT, 'data/resumes');
 
 // Chromium binaries are not installable on this platform (playwright 1.60 has no
 // ubuntu26.04 build), so we drive the system Chrome instead. If neither is
@@ -153,4 +154,40 @@ function assertRealDbUntouched(before, assert) {
   );
 }
 
-module.exports = { startServer, seedDatabase, findBrowser, realDbFingerprint, assertRealDbUntouched, REAL_DB };
+// Snapshot the repo's real data/resumes/ so a resume test can prove it was not
+// touched. The earlier guard asserted the directory did not *exist*, which
+// holds only on a fresh clone: the README tells users to drop their CV in
+// exactly this directory, so on any real installation these suites aborted
+// before their first assertion. What actually needs proving is that a run
+// pointed at a temp RESUMES_DIR leaves the real one alone — so record its
+// contents (and each file's size/mtime) and compare, which is meaningful
+// whether or not the directory exists.
+function realResumesFingerprint() {
+  if (!fs.existsSync(REAL_RESUMES_DIR)) return { exists: false };
+  const entries = fs.readdirSync(REAL_RESUMES_DIR).sort().map(name => {
+    const st = fs.statSync(path.join(REAL_RESUMES_DIR, name));
+    return { name, size: st.size, mtimeMs: st.mtimeMs };
+  });
+  return { exists: true, entries };
+}
+
+function assertRealResumesUntouched(before, assert) {
+  const after = realResumesFingerprint();
+  assert.deepEqual(
+    after,
+    before,
+    'the repo\'s real data/resumes/ must not be created, added to, or modified by an E2E run'
+  );
+}
+
+module.exports = {
+  startServer,
+  seedDatabase,
+  findBrowser,
+  realDbFingerprint,
+  assertRealDbUntouched,
+  realResumesFingerprint,
+  assertRealResumesUntouched,
+  REAL_DB,
+  REAL_RESUMES_DIR
+};
